@@ -9,6 +9,7 @@ tests/assets/*
 build/
 bin/
 out/
+blur-Linux-Release-x64/
 
 # visual studio
 .vs

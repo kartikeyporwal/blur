@@ -24,7 +24,7 @@ Blur is a native desktop application made for easily and efficiently adding moti
 
 ### Linux notes
 
-Requires manual installation of dependencies. [See here for the list of dependencies.](#linux-dependency-requirements)
+The Linux release is a self-contained directory — no manual dependency installation needed. [See the build instructions below.](#building-on-linux)
 
 ## Features
 
@@ -197,27 +197,112 @@ You can customise the SVP interpolation settings even further by manually defini
 
 These options are not visible by default, add them to your config and they will be used.
 
-## Linux dependency requirements
+## Building on Linux
 
-### General list of things you need
+The Linux build is fully automated using Docker. It compiles all dependencies (FFmpeg, VapourSynth, Python, plugins) and the blur binary inside a container, then produces a self-contained `blur-Linux-Release-x64/` directory you can run anywhere.
 
-If your distro isn't listed below, here's a list of the things you'll need to install. Most of the Vapoursynth plugins don't provide Linux builds annoyingly, so you'll have to compile them yourself if they aren't available via package repos. They all provide instructions on how to do this though.
+### Requirements
 
-- VapourSynth
-- FFmpeg
-- VapourSynth plugins
-  - [SVPflow](https://web.archive.org/web/20190322064557/http://www.svp-team.com/files/gpl/svpflow-4.2.0.142.zip)
-  - [BestSource](https://github.com/vapoursynth/bestsource)
-  - [MVTools](https://github.com/dubhater/vapoursynth-mvtools)
-  - [Akarin](https://github.com/AkarinVS/vapoursynth-plugin) (or this [fork which supports newer LLVM versions](https://github.com/Jaded-Encoding-Thaumaturgy/akarin-vapoursynth-plugin))
-  - [RIFE-ncnn-Vulkan](https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan)
-  - [Adjust](https://github.com/f0e/Vapoursynth-adjust/releases/latest)
+- [Docker](https://docs.docker.com/engine/install/) (any recent version)
+- Git
 
-### Arch required packages
+### Step 1 — Clone the repository
 
-`paru -S vapoursynth ffmpeg vapoursynth-plugin-svpflow vapoursynth-plugin-bestsource vapoursynth-plugin-mvtools vapoursynth-plugin-vsakarin-av1an-git vapoursynth-plugin-rife-ncnn-vulkan`
+```bash
+git clone https://github.com/f0e/blur --recursive
+cd blur
+```
 
-And manually install [adjust](https://github.com/f0e/Vapoursynth-adjust/releases/latest)
+The `--recursive` flag clones the imgui and stb submodules. If you already cloned without it, run:
+
+```bash
+git submodule update --init --recursive
+```
+
+### Step 2 — Build the Docker image
+
+This installs all build tools and compiles every dependency (FFmpeg, VapourSynth, Python 3.12, VS plugins). It takes **30–60 minutes** the first time. Subsequent builds are fast thanks to Docker's layer cache — the deps layer is only rebuilt if `ci/build-dependencies-linux.sh` changes.
+
+```bash
+docker build -t blur-linux -f ci/Dockerfile .
+```
+
+### Step 3 — Extract the distribution
+
+```bash
+docker run --rm -v "$(pwd):/out" blur-linux
+```
+
+This copies `blur-Linux-Release-x64/` into your current directory.
+
+### Step 4 — Run
+
+```bash
+# GUI
+./blur-Linux-Release-x64/blur
+
+# CLI (run with --help for usage)
+./blur-Linux-Release-x64/blur-cli --help
+```
+
+No additional setup, no system dependencies to install.
+
+### Distribution layout
+
+```
+blur-Linux-Release-x64/
+├── blur                      # GUI application
+├── blur-cli                  # Command-line interface
+├── ffmpeg/
+│   └── ffmpeg                # Bundled FFmpeg
+├── vapoursynth/
+│   └── vspipe                # VapourSynth pipe binary
+├── vapoursynth-plugins/      # VS plugins (mvtools, akarin, svpflow, ...)
+├── python/                   # Standalone Python 3.12 (relocatable)
+│   └── lib/python3.12/
+│       └── site-packages/
+│           └── vapoursynth/  # VapourSynth Python module
+└── lib/                      # Bundled shared libraries + VS scripts
+    ├── blur.py               # Main VapourSynth processing script
+    ├── blur/                 # VS helper modules
+    └── *.so                  # SDL3, FFmpeg, VapourSynth, etc.
+```
+
+### Rebuilding after code changes
+
+The deps layer is cached. Only the blur binary is recompiled:
+
+```bash
+docker build -t blur-linux -f ci/Dockerfile .
+docker run --rm -v "$(pwd):/out" blur-linux
+```
+
+### Manual build (without Docker)
+
+If you prefer to build without Docker, install the packages listed in `ci/Dockerfile`, then run:
+
+```bash
+cd ci && ./build-dependencies-linux.sh
+cd ..
+ci/build-blur-linux.sh
+ci/package-linux.sh
+```
+
+---
+
+### Installing manually (Arch Linux)
+
+If you already have system-level VapourSynth and FFmpeg installed and just want to use the blur binary directly (without the bundled environment):
+
+```bash
+paru -S vapoursynth ffmpeg vapoursynth-plugin-svpflow vapoursynth-plugin-bestsource \
+        vapoursynth-plugin-mvtools vapoursynth-plugin-vsakarin-av1an-git \
+        vapoursynth-plugin-rife-ncnn-vulkan
+```
+
+And manually install [adjust](https://github.com/f0e/Vapoursynth-adjust/releases/latest).
+
+Then place the `blur` binary anywhere on your PATH and make sure `vspipe` and `ffmpeg` are also on your PATH.
 
 ---
 

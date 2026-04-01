@@ -42,6 +42,9 @@ Blur::InitialisationResponse Blur::initialise(bool _verbose, bool _using_preview
 #elif defined(__linux__)
 		vspipe_path = (blur.resources_path / "vapoursynth/vspipe").wstring();
 		ffmpeg_path = (blur.resources_path / "ffmpeg/ffmpeg").wstring();
+		ffprobe_path = (blur.resources_path / "ffmpeg/ffprobe").wstring();
+
+
 #elif defined(__APPLE__)
 		vspipe_path = (blur.resources_path / "vapoursynth/vspipe").wstring();
 		ffmpeg_path = (blur.resources_path / "ffmpeg/ffmpeg").wstring();

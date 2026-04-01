@@ -101,9 +101,12 @@ bool render::init(SDL_Window* window, const SDL_GLContext& context) {
 }
 
 void render::destroy() {
+	if (!imgui.ctx)
+		return;
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplSDL3_Shutdown();
 	ImGui::DestroyContext();
+	imgui.ctx = nullptr;
 }
 
 void render::update_window_size(SDL_Window* window) {

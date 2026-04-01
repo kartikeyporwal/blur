@@ -20,10 +20,20 @@ rm -f linuxdeploy-x86_64.AppImage
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
 chmod +x linuxdeploy-x86_64.AppImage
 
-# copy binaries from arguments
-for arg in "$@"; do
-  cp "$arg" appimage/usr/bin/
-done
+# copy binaries from arguments, or find blur binary automatically
+if [ "$#" -gt 0 ]; then
+  for arg in "$@"; do
+    cp "$arg" appimage/usr/bin/
+  done
+else
+  blur_bin=$(find ../bin -name "blur" -type f | head -1)
+  if [ -z "$blur_bin" ]; then
+    echo "Error: could not find blur binary in ../bin. Build the project first or pass the binary as an argument."
+    exit 1
+  fi
+  echo "Using blur binary: $blur_bin"
+  cp "$blur_bin" appimage/usr/bin/
+fi
 
 # copy desktop file and icon
 cp ../resources/blur.desktop appimage/usr/share/applications/blur.desktop
@@ -34,7 +44,8 @@ cp out/python/bin/* appimage/usr/bin/
 cp -r out/python/lib/* appimage/usr/lib/
 
 # copy shared libraries
-cp /usr/local/lib/libvapoursynth* appimage/usr/lib/
+# cp /usr/local/lib/python3.12/site-packages/vapoursynth/libvapoursynth* appimage/usr/lib/
+cp -pr /root/workspace/ci/build/vapoursynth/build/libvapoursynth* appimage/usr/lib/
 cp -r out/ffmpeg-shared/lib/* appimage/usr/lib/
 
 # # this is also required for a vapoursynth plugin that i forget
@@ -63,5 +74,6 @@ chmod +x appimage/usr/bin/vapoursynth*
 # build the appimage
 # export NO_STRIP=true # (fedora)
 
-export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$PWD/appimage/usr/lib:/usr/local/lib:$LD_LIBRARY_PATH
+export APPIMAGE_EXTRACT_AND_RUN=1
 ./linuxdeploy-x86_64.AppImage --appdir=appimage --output=appimage

@@ -269,7 +269,7 @@ u::VideoInfo u::get_video_info(const std::filesystem::path& path) {
 
 	if (blur.used_installer) {
 #ifdef __linux__
-		env["LD_LIBRARY_PATH"] = (blur.resources_path / "../lib").string();
+		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").string();
 #endif
 	}
 
@@ -288,7 +288,8 @@ u::VideoInfo u::get_video_info(const std::filesystem::path& path) {
 		"default=noprint_wrappers=1",
 		path.wstring(),
 		bp::std_out > pipe_stream,
-		bp::std_err > bp::null
+		bp::std_err > bp::null,
+		env
 #ifdef _WIN32
 		,
 		bp::windows::create_no_window
@@ -368,7 +369,7 @@ std::vector<u::EncodingDevice> u::get_hardware_encoding_devices() {
 
 	if (blur.used_installer) {
 #ifdef __linux__
-		env["LD_LIBRARY_PATH"] = (blur.resources_path / "../lib").string();
+		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").string();
 #endif
 	}
 
@@ -417,7 +418,8 @@ std::vector<u::EncodingDevice> u::get_hardware_encoding_devices() {
 		"-hide_banner",
 		"-encoders",
 		bp::std_out > encoder_stream,
-		bp::std_err > bp::null
+		bp::std_err > bp::null,
+		env
 #ifdef _WIN32
 		,
 		bp::windows::create_no_window
@@ -592,8 +594,9 @@ std::map<int, std::string> u::get_rife_gpus() {
 
 	bp::environment env = boost::this_process::environment();
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__linux__)
 	if (blur.used_installer) {
+		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").string();
 		env["PYTHONHOME"] = (blur.resources_path / "python").string();
 		env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").string();
 	}
@@ -607,6 +610,10 @@ std::map<int, std::string> u::get_rife_gpus() {
 		blur.vspipe_path.wstring(),
 		L"-c",
 		L"y4m",
+#ifdef __linux__
+		L"-a",
+		L"linux_bundled=true",
+#endif
 		get_gpus_script_path,
 		L"-",
 		bp::std_out.null(),
@@ -660,8 +667,9 @@ int u::get_fastest_rife_gpu_index(
 	for (const auto& [gpu_index, gpu_name] : gpu_map) {
 		bp::environment env = boost::this_process::environment();
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__linux__)
 		if (blur.used_installer) {
+			env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").string();
 			env["PYTHONHOME"] = (blur.resources_path / "python").string();
 			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").string();
 		}

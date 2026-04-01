@@ -1,0 +1,77 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ── System build tools ────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Core toolchain
+    build-essential gcc g++ ninja-build cmake pkg-config \
+    git curl wget zip unzip tar xz-utils \
+    autoconf automake autoconf-archive libtool libltdl-dev \
+    # Python (for build tooling — VapourSynth uses meson/cython)
+    python3 python3-pip \
+    # Assembler (needed by FFmpeg codec builds)
+    nasm \
+    # LLVM/Clang — akarin requires >= 10 && < 17, so install 16 alongside the default
+    llvm llvm-dev clang \
+    llvm-16 llvm-16-dev clang-16 \
+    # patchelf — embeds $ORIGIN rpath in binaries for portable distribution
+    patchelf \
+    # FUSE + kmod (used by some build tooling)
+    fuse kmod \
+    # VapourSynth build dependencies
+    libxxhash-dev libfftw3-dev meson \
+    # X11 / GL / Wayland headers — required so vcpkg builds SDL3 with display support
+    libx11-dev libxext-dev libxrandr-dev libxft-dev \
+    libdbus-1-dev \
+    libwayland-dev libxkbcommon-dev \
+    libgl1-mesa-dev libegl1-mesa-dev \
+    libibus-1.0-dev \
+    # Headers for vcpkg packages (lzma/zstd/lz4 used by sdbus-cpp / boost)
+    liblz4-dev liblzma-dev libzstd-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install a recent meson via pip — the apt version (≤1.0) is too old for some VS builds
+RUN pip3 install --break-system-packages meson
+
+WORKDIR /workspace
+
+# ── Stage 1: build all dependencies (heavy — cached unless scripts change) ───
+COPY ci/build-dependencies-linux.sh ci/
+RUN cd ci && ./build-dependencies-linux.sh
+
+# Additional Python packages required by vcpkg's libsystemd meson build
+RUN pip3 install --break-system-packages jinja2 docutils
+
+# ── Stage 2: build blur ───────────────────────────────────────────────────────
+COPY ci/ ci/
+COPY . .
+
+# Initialize submodules if they weren't pre-populated (fallback for Docker builds)
+RUN if [ ! -f dependencies/imgui/imgui.h ]; then \
+        git clone --depth 1 https://github.com/ocornut/imgui.git dependencies/imgui; \
+    fi && \
+    if [ ! -f dependencies/stb/stb_image.h ]; then \
+        git clone --depth 1 https://github.com/nothings/stb.git dependencies/stb; \
+    fi
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    ninja-build \
+    libsystemd-dev \
+    git \
+    pkg-config    
+RUN ci/build-blur-linux.sh
+
+# ── Stage 3: assemble the portable distribution directory ────────────────────
+RUN ci/package-linux.sh
+
+# ── Runtime: minimal image that outputs the distribution ─────────────────────
+FROM ubuntu:24.04
+
+COPY --from=0 /dist /dist
+
+# Default command: copy the distribution to the /out volume mount and chown
+# all files to match the host user (identified by the owner of /out).
+CMD ["sh", "-c", "cp -r /dist/blur-Linux-Release-x64 /out/ && chown -R \"$(stat -c '%u:%g' /out)\" /out/blur-Linux-Release-x64/"]

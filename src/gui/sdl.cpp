@@ -63,7 +63,7 @@ void sdl::initialise() {
 		SDL_CreateWindow("Blur", 591, 381, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 
 	if (!window) {
-		throw std::runtime_error("Failed to create SDL window");
+		throw std::runtime_error(std::format("Failed to create SDL window: {}", SDL_GetError()));
 	}
 
 	SDL_SetWindowMinimumSize(window, 450, 250);

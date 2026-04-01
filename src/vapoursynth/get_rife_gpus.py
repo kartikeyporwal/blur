@@ -16,6 +16,11 @@ if vars().get("macos_bundled") == "true":
             print("loading", dylib.name)
             core.std.LoadPlugin(path=str(dylib))
 
+if vars().get("linux_bundled") == "true":
+    plugin_dir = Path(__file__).parent.parent / "vapoursynth-plugins"
+    for plugin in sorted(plugin_dir.glob("*.so")):
+        core.std.LoadPlugin(path=str(plugin))
+
 # add blur.py folder to path so it can reference scripts
 sys.path.insert(1, str(Path(__file__).parent))
 
