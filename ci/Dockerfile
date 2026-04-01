@@ -67,11 +67,18 @@ RUN ci/build-blur-linux.sh
 # ── Stage 3: assemble the portable distribution directory ────────────────────
 RUN ci/package-linux.sh
 
+# ── Stage 4: package as AppImage ─────────────────────────────────────────────
+RUN ci/build-appimage.sh
+
 # ── Runtime: minimal image that outputs the distribution ─────────────────────
 FROM ubuntu:24.04
 
 COPY --from=0 /dist /dist
 
-# Default command: copy the distribution to the /out volume mount and chown
-# all files to match the host user (identified by the owner of /out).
-CMD ["sh", "-c", "cp -r /dist/blur-Linux-Release-x64 /out/ && chown -R \"$(stat -c '%u:%g' /out)\" /out/blur-Linux-Release-x64/"]
+# Default command: copy the directory bundle and AppImage to /out, then chown
+# all output files to match the host user (identified by the owner of /out).
+CMD ["sh", "-c", "\
+  cp -r /dist/blur-Linux-Release-x64 /out/ && \
+  cp /dist/blur-Linux-x86_64.AppImage /out/ && \
+  chown -R \"$(stat -c '%u:%g' /out)\" /out/blur-Linux-Release-x64/ /out/blur-Linux-x86_64.AppImage \
+"]

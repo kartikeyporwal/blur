@@ -1,79 +1,47 @@
 #!/bin/bash
 set -e
 
-rm -rf appimage/
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# sudo cp -r out/python/bin/* /usr/local/bin
-# sudo cp -r out/python/include/* /usr/local/include
-# sudo cp -r out/python/lib/* /usr/local/lib
+BUNDLE_DIR="/dist/blur-Linux-Release-x64"
+APPDIR="/tmp/blur.AppDir"
+OUTPUT="/dist/blur-Linux-x86_64.AppImage"
 
-# create appdir structure
-mkdir -p appimage/usr/bin/
-mkdir -p appimage/usr/bin/ffmpeg/
-mkdir -p appimage/usr/bin/vapoursynth/
-mkdir -p appimage/usr/lib/
-mkdir -p appimage/usr/share/applications/
-mkdir -p appimage/usr/share/icons/hicolor/256x256/apps/
+echo "==> Building AppImage from $BUNDLE_DIR"
 
-# download linuxdeploy tool
-rm -f linuxdeploy-x86_64.AppImage
-wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-chmod +x linuxdeploy-x86_64.AppImage
+[ -d "$BUNDLE_DIR" ] || { echo "Error: bundle not found at $BUNDLE_DIR. Run package-linux.sh first."; exit 1; }
 
-# copy binaries from arguments, or find blur binary automatically
-if [ "$#" -gt 0 ]; then
-  for arg in "$@"; do
-    cp "$arg" appimage/usr/bin/
-  done
-else
-  blur_bin=$(find ../bin -name "blur" -type f | head -1)
-  if [ -z "$blur_bin" ]; then
-    echo "Error: could not find blur binary in ../bin. Build the project first or pass the binary as an argument."
-    exit 1
-  fi
-  echo "Using blur binary: $blur_bin"
-  cp "$blur_bin" appimage/usr/bin/
+# ── Build AppDir from the existing bundle ─────────────────────────────────────
+rm -rf "$APPDIR"
+cp -a "$BUNDLE_DIR" "$APPDIR"
+
+# ── AppRun: entry point invoked by the AppImage runtime ───────────────────────
+cat > "$APPDIR/AppRun" <<'EOF'
+#!/bin/sh
+APPDIR="$(dirname "$(readlink -f "$0")")"
+exec "$APPDIR/blur" "$@"
+EOF
+chmod +x "$APPDIR/AppRun"
+
+# ── Desktop file and icon (required by AppImage spec) ─────────────────────────
+cp "$PROJECT_DIR/resources/blur.desktop" "$APPDIR/blur.desktop"
+cp "$PROJECT_DIR/resources/blur.png"     "$APPDIR/blur.png"
+
+# ── Download appimagetool ─────────────────────────────────────────────────────
+APPIMAGETOOL="/tmp/appimagetool-x86_64.AppImage"
+if [ ! -f "$APPIMAGETOOL" ]; then
+    echo "--> Downloading appimagetool"
+    wget -q -O "$APPIMAGETOOL" \
+        "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+    chmod +x "$APPIMAGETOOL"
 fi
 
-# copy desktop file and icon
-cp ../resources/blur.desktop appimage/usr/share/applications/blur.desktop
-cp ../resources/blur.png appimage/usr/share/icons/hicolor/256x256/apps/blur.png
-
-# copy python bin & lib
-cp out/python/bin/* appimage/usr/bin/
-cp -r out/python/lib/* appimage/usr/lib/
-
-# copy shared libraries
-# cp /usr/local/lib/python3.12/site-packages/vapoursynth/libvapoursynth* appimage/usr/lib/
-cp -pr /root/workspace/ci/build/vapoursynth/build/libvapoursynth* appimage/usr/lib/
-cp -r out/ffmpeg-shared/lib/* appimage/usr/lib/
-
-# # this is also required for a vapoursynth plugin that i forget
-# cp /usr/lib64/libfftw3* appimage/usr/lib
-
-# copy vapoursynth plugins
-mkdir appimage/usr/bin/vapoursynth-plugins/
-cp out/vapoursynth-plugins/*.so appimage/usr/bin/vapoursynth-plugins/
-
-# copy additional binaries
-cp -r out/ffmpeg/* appimage/usr/bin/ffmpeg/
-cp -r out/vapoursynth/* appimage/usr/bin/vapoursynth/
-
-# copy vapoursynth scripts
-mkdir -p appimage/usr/bin/lib/
-old_dir=$PWD
-cd ../src/vapoursynth/
-find . -name "*.py" -exec cp --parents {} ../../ci/appimage/usr/bin/lib/ \;
-cd $old_dir
-
-# set executable permissions for all binaries
-chmod +x appimage/usr/bin/*
-chmod +x appimage/usr/bin/ffmpeg*
-chmod +x appimage/usr/bin/vapoursynth*
-
-# build the appimage
-# export NO_STRIP=true # (fedora)
-
-export LD_LIBRARY_PATH=$PWD/appimage/usr/lib:/usr/local/lib:$LD_LIBRARY_PATH
+# ── Package ───────────────────────────────────────────────────────────────────
+# APPIMAGE_EXTRACT_AND_RUN=1: run appimagetool without FUSE (required in Docker)
 export APPIMAGE_EXTRACT_AND_RUN=1
-./linuxdeploy-x86_64.AppImage --appdir=appimage --output=appimage
+"$APPIMAGETOOL" "$APPDIR" "$OUTPUT"
+
+echo ""
+echo "==> AppImage ready: $OUTPUT"
+echo "    Size: $(du -sh "$OUTPUT" | cut -f1)"
