@@ -5,30 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 BUNDLE_DIR="/dist/blur-Linux-Release-x64"
-APPDIR="/tmp/blur.AppDir"
-OUTPUT="/dist/blur-Linux-x86_64.AppImage"
 
-echo "==> Building AppImage from $BUNDLE_DIR"
+echo "==> Building AppImages from $BUNDLE_DIR"
 
 [ -d "$BUNDLE_DIR" ] || { echo "Error: bundle not found at $BUNDLE_DIR. Run package-linux.sh first."; exit 1; }
 
-# ── Build AppDir from the existing bundle ─────────────────────────────────────
-rm -rf "$APPDIR"
-cp -a "$BUNDLE_DIR" "$APPDIR"
-
-# ── AppRun: entry point invoked by the AppImage runtime ───────────────────────
-cat > "$APPDIR/AppRun" <<'EOF'
-#!/bin/sh
-APPDIR="$(dirname "$(readlink -f "$0")")"
-exec "$APPDIR/blur" "$@"
-EOF
-chmod +x "$APPDIR/AppRun"
-
-# ── Desktop file and icon (required by AppImage spec) ─────────────────────────
-cp "$PROJECT_DIR/resources/blur.desktop" "$APPDIR/blur.desktop"
-cp "$PROJECT_DIR/resources/blur.png"     "$APPDIR/blur.png"
-
-# ── Download appimagetool ─────────────────────────────────────────────────────
+# ── Download appimagetool once ────────────────────────────────────────────────
 APPIMAGETOOL="/tmp/appimagetool-x86_64.AppImage"
 if [ ! -f "$APPIMAGETOOL" ]; then
     echo "--> Downloading appimagetool"
@@ -37,11 +19,38 @@ if [ ! -f "$APPIMAGETOOL" ]; then
     chmod +x "$APPIMAGETOOL"
 fi
 
-# ── Package ───────────────────────────────────────────────────────────────────
-# APPIMAGE_EXTRACT_AND_RUN=1: run appimagetool without FUSE (required in Docker)
 export APPIMAGE_EXTRACT_AND_RUN=1
-"$APPIMAGETOOL" "$APPDIR" "$OUTPUT"
+
+build_appimage() {
+    local binary="$1"      # e.g. blur or blur-cli
+    local output="$2"      # e.g. /dist/blur-Linux-x86_64.AppImage
+    local appdir="/tmp/${binary}.AppDir"
+
+    echo "--> Building $output"
+
+    rm -rf "$appdir"
+    cp -a "$BUNDLE_DIR" "$appdir"
+
+    # AppRun: exec the target binary
+    cat > "$appdir/AppRun" <<EOF
+#!/bin/sh
+APPDIR="\$(dirname "\$(readlink -f "\$0")")"
+exec "\$APPDIR/$binary" "\$@"
+EOF
+    chmod +x "$appdir/AppRun"
+
+    # Desktop file and icon (required by AppImage spec)
+    sed "s/^Exec=.*/Exec=$binary/" "$PROJECT_DIR/resources/blur.desktop" > "$appdir/${binary}.desktop"
+    cp "$PROJECT_DIR/resources/blur.png" "$appdir/blur.png"
+
+    "$APPIMAGETOOL" "$appdir" "$output"
+    echo "    Size: $(du -sh "$output" | cut -f1)"
+}
+
+build_appimage "blur"     "/dist/blur-Linux-x86_64.AppImage"
+build_appimage "blur-cli" "/dist/blur-cli-Linux-x86_64.AppImage"
 
 echo ""
-echo "==> AppImage ready: $OUTPUT"
-echo "    Size: $(du -sh "$OUTPUT" | cut -f1)"
+echo "==> AppImages ready:"
+echo "    /dist/blur-Linux-x86_64.AppImage"
+echo "    /dist/blur-cli-Linux-x86_64.AppImage"

@@ -80,5 +80,9 @@ COPY --from=0 /dist /dist
 CMD ["sh", "-c", "\
   cp -r /dist/blur-Linux-Release-x64 /out/ && \
   cp /dist/blur-Linux-x86_64.AppImage /out/ && \
-  chown -R \"$(stat -c '%u:%g' /out)\" /out/blur-Linux-Release-x64/ /out/blur-Linux-x86_64.AppImage \
+  cp /dist/blur-cli-Linux-x86_64.AppImage /out/ && \
+  chown -R \"$(stat -c '%u:%g' /out)\" \
+    /out/blur-Linux-Release-x64/ \
+    /out/blur-Linux-x86_64.AppImage \
+    /out/blur-cli-Linux-x86_64.AppImage \
 "]
