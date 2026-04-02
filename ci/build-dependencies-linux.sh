@@ -171,9 +171,8 @@ cd ../..
 
 mkdir -p "$out_dir/ffmpeg" "$out_dir/ffmpeg-shared/bin" "$out_dir/ffmpeg-shared/lib"
 cp /usr/local/bin/ffmpeg  "$out_dir/ffmpeg/ffmpeg"
-cp /usr/local/bin/ffmpeg  "$out_dir/ffmpeg-shared/bin/ffmpeg"
 cp /usr/local/bin/ffprobe "$out_dir/ffmpeg-shared/bin/ffprobe"
-find /usr/local/lib -maxdepth 1 \( -name "libav*.so*" -o -name "libsw*.so*" \) \
+find /usr/local/lib -maxdepth 1 \( -name "libav*.so*" -o -name "libsw*.so*" -o -name "libpostproc*.so*" \) \
   -exec cp -aP {} "$out_dir/ffmpeg-shared/lib/" \;
 
 ## svpflow

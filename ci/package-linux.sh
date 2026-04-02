@@ -128,6 +128,9 @@ for plugin in "$DIST_DIR/vapoursynth-plugins/"*.so; do
     [ -f "$plugin" ] && collect_deps "$plugin"
 done
 
+collect_deps "$DIST_DIR/ffmpeg/ffmpeg"
+collect_deps "$DIST_DIR/ffmpeg/ffprobe"
+
 # ── Python environment ────────────────────────────────────────────────────────
 echo "--> Copying Python environment"
 cp -a "$SCRIPT_DIR/out/python/." "$DIST_DIR/python/"
