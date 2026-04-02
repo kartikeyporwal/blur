@@ -326,12 +326,10 @@ docker run \
   -v /path_to_/directory_blur-Linux-Release-x64/:/root/workspace \
   -v /path_to_/directory_containing_videos/:/root/videos \
   --gpus=all --rm -it \
-  -v /etc/OpenCL:/etc/OpenCL:ro \
   --workdir /root/workspace \
   ubuntu:24.04 \
   bash -c \
-    "apt-get update -q && apt-get install -y -q ocl-icd-libopencl1 && \  
-    ./blur-cli --verbose --input /root/videos/your_video_file.mp4"
+    "./blur-cli --verbose --input /root/videos/your_video_file.mp4"
 
 ```
 
@@ -341,12 +339,10 @@ docker run \
   -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage/:/root/workspace \
   -v /path_to_/directory_containing_videos/:/root/videos \
   --gpus=all --rm -it \
-  -v /etc/OpenCL:/etc/OpenCL:ro \
   --workdir /root/workspace \
   ubuntu:24.04 \
   bash -c \
-    "apt-get update -q && apt-get install -y -q ocl-icd-libopencl1 && \
-    ./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --verbose --input /root/videos/your_video_file.mp4"
+    "./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --verbose --input /root/videos/your_video_file.mp4"
 
 ```
 
@@ -356,11 +352,9 @@ docker run \
   -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage_and_blur-cli.sh/:/root/workspace \
   -v /path_to_/directory_containing_videos/:/root/videos \
   --gpus=all --rm -it \
-  -v /etc/OpenCL:/etc/OpenCL:ro \
   --workdir /root/workspace \
   ubuntu:24.04 bash -c \
-  "apt-get update -q && apt-get install -y -q ocl-icd-libopencl1 && \
-   ./blur-cli.sh --verbose --input  /root/videos/your_video_file.mp4"
+    "./blur-cli.sh --verbose --input  /root/videos/your_video_file.mp4"
 
 ```
 

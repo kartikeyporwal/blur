@@ -65,6 +65,11 @@ RUN apt-get update && apt-get install -y \
 RUN ci/build-blur-linux.sh
 
 # ── Stage 3: assemble the portable distribution directory ────────────────────
+# ocl-icd-libopencl1 provides libOpenCL.so.1 — the ICD loader used by SVP at
+# runtime. It's bundled into the distribution so it works in minimal containers
+# (e.g. Docker with --gpus=all) that don't have OpenCL packages installed.
+RUN apt-get update && apt-get install -y --no-install-recommends ocl-icd-libopencl1 \
+  && rm -rf /var/lib/apt/lists/*
 RUN ci/package-linux.sh
 
 # ── Stage 4: package as AppImage ─────────────────────────────────────────────

@@ -60,6 +60,12 @@ export LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONHOME="$PYTHON_DIR"
 export PYTHONPATH="$LIB_DIR:$PYTHON_DIR/lib/python3.12/site-packages"
 
+# OpenCL ICD: use system vendor dir if present (bare-metal with NVIDIA driver),
+# otherwise fall back to the bundled ICD (minimal Docker + --gpus=all).
+if [ ! -d /etc/OpenCL/vendors ] || ! ls /etc/OpenCL/vendors/*.icd >/dev/null 2>&1; then
+    export OCL_ICD_VENDORS="$BUNDLE_DIR/etc/OpenCL/vendors"
+fi
+
 # VSScript reads ~/.config/vapoursynth/vapoursynth.toml to locate libpython.
 # The key must be the real path of the loaded libvsscript.so.4 (from dladdr).
 # vspipe-real's RUNPATH ($ORIGIN/../lib) loads libvsscript from LIB_DIR, so
@@ -122,6 +128,18 @@ find "$SCRIPT_DIR/out/python/lib" -maxdepth 1 -name "libpython*.so*" | while rea
     bn="$(basename "$lib")"
     [ -f "$DIST_DIR/lib/$bn" ] || cp -Lp "$lib" "$DIST_DIR/lib/$bn" 2>/dev/null || true
 done
+
+# libOpenCL.so.1 — dlopen'd by SVP at runtime; invisible to ldd/collect_deps
+# libnvidia-opencl.so.1 itself comes from the host NVIDIA driver, not bundled
+find /usr/lib/x86_64-linux-gnu -maxdepth 1 -name "libOpenCL.so*" 2>/dev/null | while read -r lib; do
+    cp -Lp "$lib" "$DIST_DIR/lib/$(basename "$lib")" 2>/dev/null || true
+done
+
+# OpenCL ICD vendor config — used when the host has no /etc/OpenCL/vendors
+# (e.g. a minimal Docker container). libnvidia-opencl.so.1 is provided by the
+# host NVIDIA driver (or injected by the NVIDIA Container Toolkit via --gpus=all).
+mkdir -p "$DIST_DIR/etc/OpenCL/vendors"
+echo "libnvidia-opencl.so.1" > "$DIST_DIR/etc/OpenCL/vendors/nvidia.icd"
 
 # Scan binaries and plugins for remaining dependencies
 collect_deps "$DIST_DIR/blur"
