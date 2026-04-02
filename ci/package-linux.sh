@@ -58,7 +58,7 @@ PYTHON_DIR="$BUNDLE_DIR/python"
 
 export LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONHOME="$PYTHON_DIR"
-export PYTHONPATH="$PYTHON_DIR/lib/python3.12/site-packages"
+export PYTHONPATH="$LIB_DIR:$PYTHON_DIR/lib/python3.12/site-packages"
 
 # VSScript reads ~/.config/vapoursynth/vapoursynth.toml to locate libpython.
 # The key must be the real path of the loaded libvsscript.so.4 (from dladdr).
@@ -89,7 +89,7 @@ echo "--> Copying shared libraries"
 #   · libX11 / libxcb / libXrandr / libXext / libwayland / libxkbcommon — display
 #   · libdbus-1   — system bus
 #   · libgomp     — OpenMP runtime (host GCC)
-SKIP_PATTERN="^libc\\.so|^libm\\.so|^libpthread|^libdl\\.so|^librt\\.so|^libgcc_s|^ld-linux|^libstdc\\+\\+|^libGL\\.so|^libEGL\\.so|^libGLX\\.so|^libGLdispatch|^libvulkan\\.so|^libOpenCL\\.so|^libX11\\.so|^libXext\\.so|^libXrandr\\.so|^libxcb|^libwayland|^libxkbcommon\\.so|^libdbus-1\\.so|^libgomp\\.so"
+SKIP_PATTERN="^libc\\.so|^libm\\.so|^libpthread|^libdl\\.so|^librt\\.so|^libgcc_s|^ld-linux|^libstdc\\+\\+|^libGL\\.so|^libEGL\\.so|^libGLX\\.so|^libGLdispatch|^libvulkan\\.so|^libwayland|^libxkbcommon\\.so|^libdbus-1\\.so"
 
 # Copy all non-system ldd dependencies of a binary into $DIST_DIR/lib/
 collect_deps() {
@@ -158,14 +158,14 @@ cp -a "$PROJECT_DIR/bin/Release/lib/." "$DIST_DIR/lib/"
 
 # ── Set rpath so binaries find their bundled libs via $ORIGIN ─────────────────
 echo "--> Setting rpath"
-patchelf --set-rpath '$ORIGIN/lib'    "$DIST_DIR/blur"
-patchelf --set-rpath '$ORIGIN/lib'    "$DIST_DIR/blur-cli"
-patchelf --set-rpath '$ORIGIN/../lib' "$DIST_DIR/vapoursynth/vspipe-real"
-patchelf --set-rpath '$ORIGIN/../lib' "$DIST_DIR/ffmpeg/ffmpeg"
-patchelf --set-rpath '$ORIGIN/../lib' "$DIST_DIR/ffmpeg/ffprobe"
+patchelf --force-rpath --set-rpath '$ORIGIN/lib'    "$DIST_DIR/blur"
+patchelf --force-rpath --set-rpath '$ORIGIN/lib'    "$DIST_DIR/blur-cli"
+patchelf --force-rpath --set-rpath '$ORIGIN/../lib' "$DIST_DIR/vapoursynth/vspipe-real"
+patchelf --force-rpath --set-rpath '$ORIGIN/../lib' "$DIST_DIR/ffmpeg/ffmpeg"
+patchelf --force-rpath --set-rpath '$ORIGIN/../lib' "$DIST_DIR/ffmpeg/ffprobe"
 
 for plugin in "$DIST_DIR/vapoursynth-plugins/"*.so; do
-    [ -f "$plugin" ] && patchelf --set-rpath '$ORIGIN/../lib' "$plugin" 2>/dev/null || true
+    [ -f "$plugin" ] && patchelf --force-rpath --set-rpath '$ORIGIN/../lib' "$plugin" 2>/dev/null || true
 done
 
 # Patch the VapourSynth wheel's shared libs so they find bundled deps in lib/.

@@ -8,3 +8,6 @@ build/
 *.AppImage
 blur-Linux-Release-x64/
 .git/
+blur-Linux-Release-x64*/
+sample*/
+tmp*/
