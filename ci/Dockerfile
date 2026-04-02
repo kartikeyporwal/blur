@@ -59,8 +59,14 @@ RUN cd ci && ./build-dependencies-linux.sh
 RUN pip3 install jinja2 docutils
 
 # ── Stage 2: build blur ───────────────────────────────────────────────────────
-COPY ci/ ci/
-COPY . .
+# Copy only what build-blur-linux.sh needs — package-linux.sh and build-appimage.sh
+# are copied later so changes to them don't invalidate this expensive cache layer.
+COPY ci/build-blur-linux.sh ci/build-blur-linux.sh
+COPY ci/overlay-ports/ ci/overlay-ports/
+COPY src/ src/
+COPY tests/ tests/
+COPY dependencies/ dependencies/
+COPY CMakeLists.txt CMakePresets.json vcpkg.json ./
 
 # Initialize submodules if they weren't pre-populated (fallback for Docker builds)
 RUN if [ ! -f dependencies/imgui/imgui.h ]; then \
@@ -76,6 +82,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN ci/build-blur-linux.sh
 
 # ── Stage 3: assemble the portable distribution directory ────────────────────
+# Copy packaging scripts here — changes only invalidate from this point onward.
+COPY ci/package-linux.sh ci/package-linux.sh
+COPY resources/ resources/
 # ocl-icd-libopencl1 provides libOpenCL.so.1 — the ICD loader used by SVP at
 # runtime. It's bundled into the distribution so it works in minimal containers
 # (e.g. Docker with --gpus=all) that don't have OpenCL packages installed.
@@ -84,6 +93,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ocl-icd-libopen
 RUN ci/package-linux.sh
 
 # ── Stage 4: package as AppImage ─────────────────────────────────────────────
+COPY ci/build-appimage.sh ci/build-appimage.sh
 RUN ci/build-appimage.sh
 
 # ── Runtime: minimal image that outputs the distribution ─────────────────────

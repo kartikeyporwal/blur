@@ -358,6 +358,12 @@ docker run \
 
 ```
 
+```
+
+./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --input input.mp4 --output output.mp4 --config-path blur-config.cfg 
+./blur-cli.sh --input input.mp4 --output output.mp4 --config-path blur-config.cfg 
+```
+
 ---
 
 \*in the future I might buy a dev cert, but $99 a year atm doesn't seem worth it 😅
