@@ -140,7 +140,8 @@ echo "--- Building FFmpeg 7.1 ---"
 apt-get install -y -q \
   libx264-dev libx265-dev libvpx-dev libmp3lame-dev libopus-dev \
   libvorbis-dev libass-dev libfreetype6-dev libfontconfig1-dev \
-  libdav1d-dev libwebp-dev libxvidcore-dev libssl-dev libzimg-dev
+  libdav1d-dev libwebp-dev libxvidcore-dev libssl-dev libzimg-dev \
+  libbz2-dev
 
 mkdir -p download/ffmpeg-src
 cd download/ffmpeg-src

@@ -59,6 +59,7 @@ PYTHON_DIR="$BUNDLE_DIR/python"
 export LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONHOME="$PYTHON_DIR"
 export PYTHONPATH="$LIB_DIR:$PYTHON_DIR/lib/python3.12/site-packages"
+export PYTHONDONTWRITEBYTECODE=1
 
 # OpenCL ICD: use system vendor dir if present (bare-metal with NVIDIA driver),
 # otherwise fall back to the bundled ICD (minimal Docker + --gpus=all).
@@ -201,6 +202,9 @@ done
 # Instead VSScript calls system("vapoursynth config") then reads
 # ~/.config/vapoursynth/vapoursynth.toml. The vspipe wrapper handles writing
 # that file at runtime with the correct bundle-relative paths.
+
+# ── Remove __pycache__ directories ───────────────────────────────────────────
+find "$DIST_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # ── Strip debug symbols ───────────────────────────────────────────────────────
 strip --strip-unneeded "$DIST_DIR/blur"     2>/dev/null || true

@@ -1,11 +1,22 @@
-FROM ubuntu:24.04
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# ── Add extra apt repositories ────────────────────────────────────────────────
+# LLVM 16: not in Ubuntu 22.04 default repos
+# GCC 13: needed for std::format / std::format_string (C++20); ubuntu-toolchain-r PPA
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget gnupg ca-certificates lsb-release software-properties-common \
+  && wget -qO /etc/apt/trusted.gpg.d/apt.llvm.org.asc https://apt.llvm.org/llvm-snapshot.gpg.key \
+  && echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" \
+     > /etc/apt/sources.list.d/llvm-16.list \
+  && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
+  && rm -rf /var/lib/apt/lists/*
+
 # ── System build tools ────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Core toolchain
-    build-essential gcc g++ ninja-build cmake pkg-config \
+    # Core toolchain — GCC 13 for std::format (C++20) support
+    build-essential gcc-13 g++-13 ninja-build cmake pkg-config \
     git curl wget zip unzip tar xz-utils \
     autoconf automake autoconf-archive libtool libltdl-dev \
     # Python (for build tooling — VapourSynth uses meson/cython)
@@ -29,10 +40,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libibus-1.0-dev \
     # Headers for vcpkg packages (lzma/zstd/lz4 used by sdbus-cpp / boost)
     liblz4-dev liblzma-dev libzstd-dev \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100 \
+  && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100 \
+  && update-alternatives --install /usr/bin/cc  cc  /usr/bin/gcc-13 100 \
+  && update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-13 100
 
 # Install a recent meson via pip — the apt version (≤1.0) is too old for some VS builds
-RUN pip3 install --break-system-packages meson
+RUN pip3 install meson
 
 WORKDIR /workspace
 
@@ -41,7 +56,7 @@ COPY ci/build-dependencies-linux.sh ci/
 RUN cd ci && ./build-dependencies-linux.sh
 
 # Additional Python packages required by vcpkg's libsystemd meson build
-RUN pip3 install --break-system-packages jinja2 docutils
+RUN pip3 install jinja2 docutils
 
 # ── Stage 2: build blur ───────────────────────────────────────────────────────
 COPY ci/ ci/
@@ -55,13 +70,9 @@ RUN if [ ! -f dependencies/imgui/imgui.h ]; then \
         git clone --depth 1 https://github.com/nothings/stb.git dependencies/stb; \
     fi
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    ninja-build \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libsystemd-dev \
-    git \
-    pkg-config    
+  && rm -rf /var/lib/apt/lists/*
 RUN ci/build-blur-linux.sh
 
 # ── Stage 3: assemble the portable distribution directory ────────────────────
@@ -76,7 +87,7 @@ RUN ci/package-linux.sh
 RUN ci/build-appimage.sh
 
 # ── Runtime: minimal image that outputs the distribution ─────────────────────
-FROM ubuntu:24.04
+FROM ubuntu:22.04
 
 COPY --from=0 /dist /dist
 
