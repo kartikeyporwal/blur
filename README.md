@@ -277,6 +277,17 @@ docker build -t blur-linux -f ci/Dockerfile .
 docker run --rm -v "$(pwd):/out" blur-linux
 ```
 
+This will create:
+- A directory `./blur-Linux-Release-x64/` with the `./blur-Linux-Release-x64/blur` and `./blur-Linux-Release-x64/blur-cli`
+- A standalone AppImage `./blur-cli-Linux-x86_64.AppImage` 
+- A standalone AppImage `./blur-Linux-x86_64.AppImage`
+- A bash script `./blur.sh` with `APPIMAGE_EXTRACT_AND_RUN` enabled to run `./blur-Linux-x86_64.AppImage` inside Docker container
+- A bash script `./blur-cli.sh` with `APPIMAGE_EXTRACT_AND_RUN` enabled to run `./blur-cli-Linux-x86_64.AppImage` inside Docker container
+
+
+This build should act as a static build that needs no further installations. The build includes most of the required deps and handles everything ffmpeg, ffprobe with CUDA support, vapoursynth, etc. provided that your host machine have proper Nvidia related drivers installed. If you are getting any errors related to libs, deps; it would mean you might have conflict with host deps, or deps/libs missing in the build.
+
+
 ### Manual build (without Docker)
 
 If you prefer to build without Docker, install the packages listed in `ci/Dockerfile`, then run:
@@ -303,6 +314,55 @@ paru -S vapoursynth ffmpeg vapoursynth-plugin-svpflow vapoursynth-plugin-bestsou
 And manually install [adjust](https://github.com/f0e/Vapoursynth-adjust/releases/latest).
 
 Then place the `blur` binary anywhere on your PATH and make sure `vspipe` and `ffmpeg` are also on your PATH.
+
+---
+
+## Run on Linux
+
+Ensure that your build exists by running command `docker build -t blur-linux -f ci/Dockerfile . && docker run --rm -v "$(pwd):/out" blur-linux`
+
+```
+docker run \
+  -v /path_to_/directory_blur-Linux-Release-x64/:/root/workspace \
+  -v /path_to_/directory_containing_videos/:/root/videos \
+  --gpus=all --rm -it \
+  -v /etc/OpenCL:/etc/OpenCL:ro \
+  --workdir /root/workspace \
+  ubuntu:24.04 \
+  bash -c \
+    "apt-get update -q && apt-get install -y -q ocl-icd-libopencl1 && \  
+    ./blur-cli --verbose --input /root/videos/your_video_file.mp4"
+
+```
+
+
+```
+docker run \
+  -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage/:/root/workspace \
+  -v /path_to_/directory_containing_videos/:/root/videos \
+  --gpus=all --rm -it \
+  -v /etc/OpenCL:/etc/OpenCL:ro \
+  --workdir /root/workspace \
+  ubuntu:24.04 \
+  bash -c \
+    "apt-get update -q && apt-get install -y -q ocl-icd-libopencl1 && \
+    ./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --verbose --input /root/videos/your_video_file.mp4"
+
+```
+
+
+```
+docker run \
+  -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage_and_blur-cli.sh/:/root/workspace \
+  -v /path_to_/directory_containing_videos/:/root/videos \
+  --gpus=all --rm -it \
+  -v /etc/OpenCL:/etc/OpenCL:ro \
+  --workdir /root/workspace \
+  ubuntu:24.04 bash -c \
+  "apt-get update -q && apt-get install -y -q ocl-icd-libopencl1 && \
+   ./blur-cli.sh --verbose --input  /root/videos/your_video_file.mp4"
+
+```
 
 ---
 

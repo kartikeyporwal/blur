@@ -50,7 +50,19 @@ EOF
 build_appimage "blur"     "/dist/blur-Linux-x86_64.AppImage"
 build_appimage "blur-cli" "/dist/blur-cli-Linux-x86_64.AppImage"
 
+# Create no-fuse launcher wrappers. APPIMAGE_EXTRACT_AND_RUN must be set
+# before the AppImage ELF runtime starts, so it cannot go inside AppRun.
+for name in blur blur-cli; do
+    cat > "/dist/${name}.sh" <<EOF
+#!/bin/sh
+APPIMAGE_EXTRACT_AND_RUN=1 "\$(dirname "\$(readlink -f "\$0")")/${name}-Linux-x86_64.AppImage" "\$@"
+EOF
+    chmod +x "/dist/${name}.sh"
+done
+
 echo ""
 echo "==> AppImages ready:"
 echo "    /dist/blur-Linux-x86_64.AppImage"
 echo "    /dist/blur-cli-Linux-x86_64.AppImage"
+echo "    /dist/blur.sh          (no-fuse launcher)"
+echo "    /dist/blur-cli.sh      (no-fuse launcher)"

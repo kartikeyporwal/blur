@@ -65,8 +65,11 @@ export PYTHONPATH="$LIB_DIR:$PYTHON_DIR/lib/python3.12/site-packages"
 # vspipe-real's RUNPATH ($ORIGIN/../lib) loads libvsscript from LIB_DIR, so
 # LIB_DIR/libvsscript.so.4 is the key VSScript will look up.
 mkdir -p "$HOME/.config/vapoursynth"
+# The key must match exactly what dladdr returns for the loaded libvsscript.so.4.
+# vspipe-real has RUNPATH $ORIGIN/../lib, so the linker opens it as:
+#   <VS_DIR>/../lib/libvsscript.so.4  (with the ".." intact, not normalized)
 printf '"%s" = ["%s","%s"]\n' \
-    "$LIB_DIR/libvsscript.so.4" \
+    "$VS_DIR/../lib/libvsscript.so.4" \
     "$PYTHON_DIR/bin/python3" \
     "$LIB_DIR/libpython3.12.so.1.0" \
     > "$HOME/.config/vapoursynth/vapoursynth.toml"
@@ -83,13 +86,14 @@ fi
 echo "--> Copying shared libraries"
 
 # Libs provided by the host — never bundle these:
-#   · libc / libm / libpthread / libdl / librt / libgcc_s / ld-linux  (glibc ABI)
-#   · libstdc++   — C++ runtime; must match the host GCC ABI
-#   · libGL / libEGL / libGLX / libGLdispatch / libvulkan / libOpenCL — GPU/driver
-#   · libX11 / libxcb / libXrandr / libXext / libwayland / libxkbcommon — display
-#   · libdbus-1   — system bus
-#   · libgomp     — OpenMP runtime (host GCC)
-SKIP_PATTERN="^libc\\.so|^libm\\.so|^libpthread|^libdl\\.so|^librt\\.so|^libgcc_s|^ld-linux|^libstdc\\+\\+|^libGL\\.so|^libEGL\\.so|^libGLX\\.so|^libGLdispatch|^libvulkan\\.so|^libwayland|^libxkbcommon\\.so|^libdbus-1\\.so"
+#   · libc / libm / libpthread / libdl / librt / ld-linux  (glibc ABI, kernel-coupled)
+#   · libGL / libEGL / libGLX / libGLdispatch / libvulkan  — GPU/driver (host-specific)
+#   · libwayland / libxkbcommon                            — display server (host-specific)
+#   · libdbus-1                                            — system bus
+#
+# libstdc++ and libgcc_s ARE bundled: plugins compiled on Ubuntu 24.04 may use
+# newer GLIBCXX symbols not present on older host distros (e.g. Ubuntu 22.04).
+SKIP_PATTERN="^libc\\.so|^libm\\.so|^libpthread|^libdl\\.so|^librt\\.so|^ld-linux|^libGL\\.so|^libEGL\\.so|^libGLX\\.so|^libGLdispatch|^libvulkan\\.so|^libwayland|^libxkbcommon\\.so|^libdbus-1\\.so"
 
 # Copy all non-system ldd dependencies of a binary into $DIST_DIR/lib/
 collect_deps() {
