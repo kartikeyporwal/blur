@@ -189,12 +189,6 @@ download_library \
   "librife_linux_x86-64.so" \
   "vapoursynth-plugins"
 
-## adjust
-download_library \
-  "https://github.com/f0e/Vapoursynth-adjust/releases/download/v1/libadjust.so" \
-  "libadjust.so" \
-  "vapoursynth-plugins"
-
 ## python for vapoursynth
 mkdir -p download/python
 cd download/python
@@ -251,6 +245,12 @@ rm -rf build/akarin
 build "https://github.com/Jaded-Encoding-Thaumaturgy/akarin-vapoursynth-plugin.git" "" "akarin" "
 git checkout 689cba74e7c71caf808b6feaaba0a32981c1956f
 LLVM_CONFIG=llvm-config-16 meson build
+ninja -C build
+" "build" "vapoursynth-plugins"
+
+## adjust (build from source — prebuilt requires glibc 2.38; must be after VapourSynth)
+build "https://github.com/f0e/Vapoursynth-adjust.git" "--depth 1" "adjust" "
+meson setup build
 ninja -C build
 " "build" "vapoursynth-plugins"
 

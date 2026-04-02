@@ -89,6 +89,22 @@ if ls "$SCRIPT_DIR/out/vapoursynth-plugins/"*.so 1>/dev/null 2>&1; then
     cp "$SCRIPT_DIR/out/vapoursynth-plugins/"*.so "$DIST_DIR/vapoursynth-plugins/"
 fi
 
+# ── Verify no bundled binary requires glibc newer than 2.35 (Ubuntu 22.04) ───
+echo "--> Checking glibc version requirements"
+MAX_GLIBC="2.35"
+violations=""
+while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    bad=$(objdump -p "$f" 2>/dev/null | grep -oP 'GLIBC_\K[\d.]+' | sort -V | tail -1)
+    [ -z "$bad" ] && continue
+    if [ "$(printf '%s\n%s\n' "$MAX_GLIBC" "$bad" | sort -V | tail -1)" != "$MAX_GLIBC" ]; then
+        echo "  GLIBC VIOLATION: $(basename "$f") requires GLIBC_$bad"
+        violations="$violations $f"
+    fi
+done < <(find "$DIST_DIR" -type f \( -name "*.so*" -o -name "blur" -o -name "blur-cli" \
+    -o -name "vspipe-real" -o -name "ffmpeg" -o -name "ffprobe" \))
+[ -z "$violations" ] || { echo "Error: glibc violations found — rebuild those from source on Ubuntu 22.04."; exit 1; }
+
 # ── Shared libraries ──────────────────────────────────────────────────────────
 echo "--> Copying shared libraries"
 
