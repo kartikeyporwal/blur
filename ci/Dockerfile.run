@@ -1,0 +1,39 @@
+# Runtime image for blur-cli
+#
+# Requires the CI builder image to already be built:
+#   docker build -t blur-linux -f ci/Dockerfile .
+#
+# Then build this runtime image:
+#   docker build -t blur-run -f ci/Dockerfile.run .
+#
+# Run:
+#   docker run --rm --gpus all \
+#     -v /path/to/videos:/input \
+#     -v /path/to/output:/output \
+#     -v /path/to/config:/config \
+#     blur-run \
+#     -i /input/video.mp4 -o /output/video.mp4 -c /config/blur.cfg
+
+# Pull the pre-built bundle from the CI image
+FROM blur-linux AS bundle
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# libvulkan1  — Vulkan loader (ICD); the actual NVIDIA Vulkan ICD is injected by
+#               the NVIDIA Container Toolkit at runtime via --gpus all.
+# ca-certificates — needed by blur for update checks (can skip with no network)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libvulkan1 \
+    ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Copy the bundle from the CI build stage
+COPY --from=bundle /dist/blur-Linux-Release-x64 /blur
+
+# Declare expected mount points (documentation only — Docker doesn't enforce them)
+VOLUME ["/input", "/output", "/config"]
+
+ENTRYPOINT ["/blur/blur-cli"]
+CMD ["--help"]

@@ -317,7 +317,58 @@ Then place the `blur` binary anywhere on your PATH and make sure `vspipe` and `f
 
 ---
 
-## Run on Linux
+## Run on Linux (Docker runtime image)
+
+You can run `blur-cli` as a self-contained Docker container — no need to extract the bundle to disk.
+
+### Requirements
+
+- [Docker](https://docs.docker.com/engine/install/)
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (for GPU acceleration)
+
+### Step 1 — Build the images
+
+First build the CI image (skip if already done from the [build steps above](#building-on-linux)):
+
+```bash
+docker build -t blur-linux -f ci/Dockerfile .
+```
+
+Then build the lightweight runtime image on top of it:
+
+```bash
+docker build -t blur-run -f ci/Dockerfile.run .
+```
+
+### Step 2 — Run
+
+```bash
+docker run --rm --gpus all \
+  -v /path/to/videos:/input \
+  -v /path/to/output:/output \
+  blur-run \
+  -i /input/video.mp4 \
+  -o /output/result.mp4
+```
+
+With a custom config file:
+
+```bash
+docker run --rm --gpus all \
+  -v /path/to/videos:/input \
+  -v /path/to/output:/output \
+  -v /path/to/config:/config \
+  blur-run \
+  -i /input/video.mp4 \
+  -o /output/result.mp4 \
+  -c /config/blur.cfg
+```
+
+All `blur-cli` flags are supported — run `docker run --rm blur-run --help` for the full list.
+
+---
+
+## Run on Linux (manual / AppImage)
 
 Ensure that your build exists by running command `docker build -t blur-linux -f ci/Dockerfile . && docker run --rm -v "$(pwd):/out" blur-linux`
 
