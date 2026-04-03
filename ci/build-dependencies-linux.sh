@@ -20,6 +20,11 @@ apt-get install -y libxxhash-dev \
   libgl1-mesa-dev \
   kmod
 
+# Install versioned llvm-config for akarin (try 16, 17, 18 in order)
+apt-get install -y llvm-16 2>/dev/null || \
+  apt-get install -y llvm-17 2>/dev/null || \
+  apt-get install -y llvm-18 2>/dev/null || true
+
 # clean outputs every run
 rm -rf $out_dir
 mkdir -p $out_dir
@@ -240,11 +245,12 @@ meson setup build
 ninja -C build
 " "build" "vapoursynth-plugins"
 
-## akarin (requires LLVM < 17 — use llvm-config-16 explicitly)
+## akarin — use the first available llvm-config (16, 17, or 18)
+LLVM_CFG=$(command -v llvm-config-16 || command -v llvm-config-17 || command -v llvm-config-18 || command -v llvm-config)
 rm -rf build/akarin
 build "https://github.com/Jaded-Encoding-Thaumaturgy/akarin-vapoursynth-plugin.git" "" "akarin" "
 git checkout 689cba74e7c71caf808b6feaaba0a32981c1956f
-LLVM_CONFIG=llvm-config-16 meson build
+LLVM_CONFIG=${LLVM_CFG} meson build
 ninja -C build
 " "build" "vapoursynth-plugins"
 

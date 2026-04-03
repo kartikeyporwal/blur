@@ -11,7 +11,7 @@
 
 namespace configs = gui::components::configs;
 
-void configs::config_preview(ui::Container& container, BlurSettings& settings) {
+void configs::config_preview(ui::Container& container) {
 	static BlurSettings previewed_settings;
 	static bool first = true;
 
@@ -56,7 +56,9 @@ void configs::config_preview(ui::Container& container, BlurSettings& settings) {
 			loading = true;
 		}
 
-		std::thread([sample_video_path, settings] {
+		auto local_settings = settings;
+		auto local_app_settings = app_settings;
+		std::thread([sample_video_path, local_settings, local_app_settings] {
 			FrameRender* render = nullptr;
 
 			{
@@ -70,30 +72,29 @@ void configs::config_preview(ui::Container& container, BlurSettings& settings) {
 				render = renders.emplace_back(std::make_unique<FrameRender>()).get();
 			}
 
-			auto res = render->render(sample_video_path, settings);
+			auto res = render->render(sample_video_path, local_settings, local_app_settings);
 
 			if (render == renders.back().get())
 			{ // todo: this should be correct right? any cases where this doesn't work?
 				loading = false;
-				error = !res.success;
 
-				if (!error) {
+				if (res) {
 					std::lock_guard<std::mutex> lock(preview_mutex);
 					preview_id++;
 
 					Blur::remove_temp_path(preview_path.parent_path());
 
-					preview_path = res.output_path;
+					preview_path = *res;
 
 					u::log("config preview finished rendering");
 				}
 				else {
-					if (res.error_message != "Input path does not exist") {
+					if (res.error() != "Input path does not exist") {
 						gui::components::notifications::add(
 							"Failed to generate config preview. Click to copy error message",
 							ui::NotificationType::NOTIF_ERROR,
 							[res](const std::string& id) {
-								SDL_SetClipboardText(res.error_message.c_str());
+								SDL_SetClipboardText(res.error().c_str());
 
 								gui::components::notifications::close(id);
 
@@ -180,15 +181,22 @@ void configs::config_preview(ui::Container& container, BlurSettings& settings) {
 					static auto file_callback = [](void* userdata, const char* const* files, int filter) {
 						if (files != nullptr && *files != nullptr) {
 							const char* file = *files;
-							tasks::add_sample_video(u::towstring(file));
+							tasks::add_sample_video(u::string_to_path(file));
 						}
+					};
+
+					const SDL_DialogFileFilter filters[] = {
+						{ "Video files",
+						  "webm;mkv;flv;vob;ogv;ogg;rrc;gifv;mng;mov;avi;qt;wmv;yuv;rm;rmvb;asf;amv;mp4;m4p;m4v;mpg;"
+						  "mp2;mpeg;mpe;"
+						  "mpv;svi;3gp;3g2;mxf;roq;nsv;f4v;f4p;f4a;f4b;mod;ts;m2ts;mts;divx;bik;wtv;drc" }
 					};
 
 					SDL_ShowOpenFileDialog(
 						file_callback, // callback
 						nullptr,       // userdata
 						nullptr,       // parent window
-						nullptr,       // file filters
+						filters,       // file filters
 						0,             // number of filters
 						"",            // default path
 						false          // allow multiple files
@@ -204,7 +212,7 @@ void configs::config_preview(ui::Container& container, BlurSettings& settings) {
 }
 
 // todo: refactor
-void configs::preview(ui::Container& header_container, ui::Container& content_container, BlurSettings& settings) {
+void configs::preview(ui::Container& header_container, ui::Container& content_container) {
 	int interp_fps = 1200;
 	bool parsed_interp_fps = false;
 
@@ -222,7 +230,7 @@ void configs::preview(ui::Container& header_container, ui::Container& content_co
 	});
 
 	if (selected_tab == "output video") {
-		config_preview(content_container, settings);
+		config_preview(content_container);
 	}
 	else {
 		auto weight_settings = settings;
@@ -249,30 +257,73 @@ void configs::preview(ui::Container& header_container, ui::Container& content_co
 	ui::add_separator("config preview separator", content_container, ui::SeparatorStyle::FADE_BOTH);
 
 	auto validation_res = config_blur::validate(settings, false);
-	if (!validation_res.success) {
+	if (!validation_res) {
 		ui::add_text(
 			"config validation error/s",
 			content_container,
-			validation_res.error,
+			validation_res.error(),
 			gfx::Color(255, 50, 50, 255),
 			fonts::dejavu,
 			FONT_CENTERED_X | FONT_OUTLINE
 		);
 
 		ui::add_button(
-			"fix config button",
-			content_container,
-			"Reset invalid config options to defaults",
-			fonts::dejavu,
-			[&] {
+			"fix config button", content_container, "Reset invalid config options to defaults", fonts::dejavu, [&] {
 				config_blur::validate(settings, true);
 			}
 		);
 	}
 
+	ui::add_button("export config", content_container, "Export", fonts::dejavu, [] {
+		std::string exported_config = config_blur::export_concise(settings);
+		SDL_SetClipboardText(exported_config.c_str());
+
+		gui::components::notifications::add(
+			"Exported config to clipboard", ui::NotificationType::INFO, {}, std::chrono::duration<float>(2.f)
+		);
+	});
+
+	ui::set_next_same_line(content_container);
+
+	ui::add_button("import config", content_container, "Import", fonts::dejavu, [] {
+		size_t len = 0;
+		void* clipboard_data = SDL_GetClipboardData("text/plain", &len);
+
+		if (clipboard_data && len > 0) {
+			std::string clipboard_text(static_cast<char*>(clipboard_data), len);
+			SDL_free(clipboard_data);
+
+			try {
+				auto clipboard_settings = config_blur::parse(clipboard_text);
+
+				ui::reset_tied_sliders();
+				settings = clipboard_settings;
+
+				gui::components::notifications::add(
+					"Imported config from clipboard", ui::NotificationType::INFO, {}, std::chrono::duration<float>(2.f)
+				);
+			}
+			catch (const std::exception& e) {
+				gui::components::notifications::add(
+					std::string("Failed to load config: ") + e.what(),
+					ui::NotificationType::NOTIF_ERROR,
+					{},
+					std::chrono::duration<float>(3.f)
+				);
+			}
+		}
+		else {
+			gui::components::notifications::add(
+				"Clipboard is empty or unreadable",
+				ui::NotificationType::NOTIF_ERROR,
+				{},
+				std::chrono::duration<float>(2.f)
+			);
+		}
+	});
+
 	ui::add_button("open config folder", content_container, "Open config folder", fonts::dejavu, [] {
-		// Convert path to a file:// URL for SDL_OpenURL
-		std::string file_url = "file://" + blur.settings_path.string();
+		std::string file_url = std::format("file://{}", blur.settings_path);
 		if (!SDL_OpenURL(file_url.c_str())) {
 			u::log_error("Failed to open config folder: {}", SDL_GetError());
 		}

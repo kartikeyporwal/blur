@@ -30,6 +30,8 @@ find_package(SDL3_image CONFIG REQUIRED)
 find_package(Freetype REQUIRED)
 find_package(glad CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
+find_package(tl-expected CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 
 # source files
 file(GLOB_RECURSE COMMON_SOURCES "src/common/*.cpp")
@@ -56,12 +58,35 @@ set(IMGUI_SOURCES
 
 file(GLOB_RECURSE RESOURCES "resources/*")
 
+# common
+add_library(blur-common STATIC ${COMMON_SOURCES})
+target_include_directories(blur-common PUBLIC src)
+target_link_libraries(
+  blur-common
+  PUBLIC nlohmann_json::nlohmann_json
+         cpr::cpr
+         Boost::system
+         Boost::filesystem
+         Threads::Threads
+         tl::expected
+         spdlog::spdlog)
+target_precompile_headers(blur-common PUBLIC src/common/common_pch.h)
+target_compile_definitions(
+  blur-common PUBLIC NOMINMAX BOOST_FILESYSTEM_NO_LIB
+                     BOOST_FILESYSTEM_STATIC_LINK=1 SPDLOG_NO_EXCEPTIONS)
+
 # common settings
 function(setup_target target)
   target_include_directories(${target} PRIVATE src)
   target_link_libraries(
-    ${target} PRIVATE nlohmann_json::nlohmann_json cpr::cpr Boost::system
-                      Boost::filesystem Threads::Threads)
+    ${target}
+    PRIVATE nlohmann_json::nlohmann_json
+            cpr::cpr
+            Boost::system
+            Boost::filesystem
+            Threads::Threads
+            tl::expected
+            spdlog::spdlog)
   target_compile_definitions(${target} PRIVATE NOMINMAX BOOST_FILESYSTEM_NO_LIB
                                                BOOST_FILESYSTEM_STATIC_LINK=1)
   if(WIN32)
@@ -98,14 +123,19 @@ else()
 endif()
 
 # cli
-add_executable(blur-cli ${COMMON_SOURCES} ${CLI_SOURCES} ${RESOURCES})
-target_link_libraries(blur-cli PRIVATE CLI11::CLI11)
+add_executable(blur-cli ${CLI_SOURCES} ${RESOURCES})
+target_link_libraries(blur-cli PRIVATE blur-common CLI11::CLI11)
 target_precompile_headers(blur-cli PRIVATE src/cli/cli_pch.h)
 setup_target(blur-cli)
 
 # gui
-add_executable(blur WIN32 ${COMMON_SOURCES} ${GUI_SOURCES} ${IMGUI_SOURCES}
-                          ${RESOURCES})
+add_executable(blur WIN32 ${GUI_SOURCES} ${IMGUI_SOURCES} ${RESOURCES})
+
+# name the executable blur-gui on windows to stop nvidia from detecting it as a
+# game (blur 2010)
+if(WIN32)
+  set_target_properties(blur PROPERTIES OUTPUT_NAME "blur-gui")
+endif()
 
 # imgui
 target_include_directories(blur
@@ -115,8 +145,9 @@ target_compile_definitions(blur PRIVATE IMGUI_IMPL_OPENGL_LOADER_CUSTOM)
 # stb
 target_include_directories(blur PRIVATE ${PROJECT_SOURCE_DIR}/dependencies/stb)
 
-target_link_libraries(blur PRIVATE SDL3::SDL3 SDL3_image::SDL3_image
-                                   Freetype::Freetype glad::glad)
+target_link_libraries(
+  blur PRIVATE blur-common SDL3::SDL3 SDL3_image::SDL3_image Freetype::Freetype
+               glad::glad)
 
 if(APPLE)
   # Disable precompiled headers for the .mm file and .cpp file
@@ -206,10 +237,9 @@ setup_target(blur)
 
 # tests
 enable_testing()
-add_executable(blur-tests ${COMMON_SOURCES} ${CLI_SOURCES_NO_MAIN}
-                          ${CLI_TEST_SOURCES})
-target_link_libraries(blur-tests PRIVATE GTest::gtest GTest::gtest_main
-                                         CLI11::CLI11)
+add_executable(blur-tests ${CLI_SOURCES_NO_MAIN} ${CLI_TEST_SOURCES})
+target_link_libraries(blur-tests PRIVATE blur-common GTest::gtest
+                                         GTest::gtest_main CLI11::CLI11)
 target_precompile_headers(blur-tests PRIVATE tests/cli/cli_test_pch.h)
 setup_target(blur-tests)
 

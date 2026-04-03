@@ -7,7 +7,6 @@ namespace {
 	}
 
 	int get_text_height(
-
 		const ui::Container& container, const std::vector<std::string>& lines, const render::Font& font
 	) {
 		return lines.size() * get_line_spacing(container, font);

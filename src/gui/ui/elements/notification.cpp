@@ -182,7 +182,7 @@ ui::AnimatedElement* ui::add_notification(
 		std::move(element),
 		container.element_gap,
 		{
-			{ hasher("main"), AnimationState(5.f) },
+			{ hasher("main"), AnimationState(15.f) },
 			{ hasher("hover"), AnimationState(80.f) },
 			{ hasher("close_hover"), AnimationState(80.f) },
 		}

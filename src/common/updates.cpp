@@ -56,62 +56,57 @@ namespace {
 	}
 }
 
-updates::UpdateCheckRes updates::is_latest_version(bool include_beta) {
-	std::string url = include_beta ? "https://api.github.com/repos/f0e/blur/releases"
-	                               : "https://api.github.com/repos/f0e/blur/releases/latest";
+tl::expected<updates::UpdateCheckRes, std::string> updates::is_latest_version(bool include_beta) {
+	std::string url = "https://api.github.com/repos/f0e/blur/releases";
 
 	auto response = cpr::Get(cpr::Url{ url });
 
 	if (response.status_code != 200) {
 		u::log("Update check failed with status {}", response.status_code);
-		return { .success = false };
+		return tl::unexpected("Update check failed");
 	}
 
 	try {
 		std::string latest_tag;
 
-		if (include_beta) {
-			json releases = json::parse(response.text);
+		json releases = json::parse(response.text);
 
-			if (releases.empty() || !releases.is_array()) {
-				u::log("Update check failed: No releases found");
-				return { .success = false };
-			}
+		if (releases.empty() || !releases.is_array()) {
+			u::log("Update check failed: No releases found");
+			return tl::unexpected("Update check failed");
+		}
 
-			// get most recent release (needs to have an installer, might make a release without one temporarily - don't
-			// want anyone updating until i have)
-			for (const auto& release : releases) {
-				std::string release_tag = release["tag_name"];
+		// get most recent release (needs to have an installer, might make a release without one temporarily - don't
+		// want anyone updating until i have)
+		for (const auto& release : releases) {
+			bool is_prerelease = release["prerelease"];
+			if (!include_beta && is_prerelease)
+				continue;
 
-				for (const auto& asset : release["assets"]) {
+			std::string release_tag = release["tag_name"];
+
+			for (const auto& asset : release["assets"]) {
 #if defined(_WIN32)
-					if (asset["name"] == WINDOWS_INSTALLER_NAME) {
+				if (asset["name"] == WINDOWS_INSTALLER_NAME) {
 #elif defined(__linux__)
-					// todo when there's an installer
-					{
+				// todo when there's an installer
+				{
 #elif defined(__APPLE__)
-					if (asset["name"] == MACOS_INSTALLER_NAME) {
+				if (asset["name"] == MACOS_INSTALLER_NAME) {
 #endif
-						// NOLINTBEGIN(readability-suspicious-call-argument) it's okay bro
-						if (latest_tag.empty() || is_version_newer(latest_tag, release_tag)) {
-							// NOLINTEND(readability-suspicious-call-argument)
-							latest_tag = release_tag;
-							break;
-						}
+					// NOLINTBEGIN(readability-suspicious-call-argument) it's okay bro
+					if (latest_tag.empty() || is_version_newer(latest_tag, release_tag)) {
+						// NOLINTEND(readability-suspicious-call-argument)
+						latest_tag = release_tag;
+						break;
 					}
 				}
 			}
 		}
-		else {
-			json release = json::parse(response.text);
 
-			if (release.contains("tag_name")) {
-				latest_tag = release["tag_name"];
-			}
-			else {
-				u::log("Update check failed: Release information not found");
-				return { .success = false };
-			}
+		if (latest_tag.empty()) {
+			u::log("Update check failed: No suitable release found");
+			return tl::unexpected("Update check failed");
 		}
 
 		// remove 'v' prefix if it exists
@@ -122,8 +117,7 @@ updates::UpdateCheckRes updates::is_latest_version(bool include_beta) {
 
 		bool is_latest = !is_version_newer(BLUR_VERSION, latest_version_number);
 
-		return {
-			.success = true,
+		return updates::UpdateCheckRes{
 			.is_latest = is_latest,
 			.latest_tag = latest_tag,
 			.latest_tag_url = "https://github.com/f0e/blur/releases/" + latest_tag,
@@ -131,9 +125,7 @@ updates::UpdateCheckRes updates::is_latest_version(bool include_beta) {
 	}
 	catch (const std::exception& e) {
 		u::log("Failed to parse latest release JSON: {}", e.what());
-		return {
-			.success = false,
-		};
+		return tl::unexpected("Update check failed");
 	}
 }
 
@@ -162,9 +154,9 @@ bool updates::update_to_tag(
 		std::string download_url = "https://github.com/f0e/blur/releases/download/" + tag + "/" + installer_filename;
 
 		// Open file for writing
-		std::ofstream installer_file(installer_path.string(), std::ios::binary);
+		std::ofstream installer_file(installer_path, std::ios::binary);
 		if (!installer_file.is_open()) {
-			u::log("Failed to create installer file at {}", installer_path.string());
+			u::log("Failed to create installer file at {}", installer_path);
 			return false;
 		}
 
@@ -218,9 +210,9 @@ bool updates::update_to_tag(
 		u::log("Download complete, launching installer");
 
 #ifdef _WIN32
-		bp::spawn(installer_path.string(), WINDOWS_INSTALLER_ARGS);
+		bp::spawn(installer_path.native(), WINDOWS_INSTALLER_ARGS);
 #elif defined(__APPLE__)
-		bp::spawn("/usr/bin/open", installer_path.string());
+		bp::spawn("/usr/bin/open", installer_path.native());
 #endif
 
 		return true;
@@ -235,9 +227,9 @@ bool updates::update_to_latest(
 	bool include_beta, const std::optional<std::function<void(const std::string& text, bool done)>>& progress_callback
 ) {
 	auto check_result = is_latest_version(include_beta);
-	if (!check_result.success || check_result.is_latest) {
+	if (!check_result || check_result->is_latest) {
 		return false;
 	}
 
-	return update_to_tag(check_result.latest_tag, progress_callback);
+	return update_to_tag(check_result->latest_tag, progress_callback);
 }

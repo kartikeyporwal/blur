@@ -1,22 +1,31 @@
 ﻿#include "rendering_frame.h"
 
-RenderCommandsResult FrameRender::build_render_commands(
-	const std::filesystem::path& input_path, const std::filesystem::path& output_path, const BlurSettings& settings
+tl::expected<RenderCommands, std::string> FrameRender::build_render_commands(
+	const std::filesystem::path& input_path,
+	const std::filesystem::path& output_path,
+	const BlurSettings& settings,
+	const GlobalAppSettings& app_settings
 ) {
-	std::wstring path_string = input_path.wstring();
-	std::ranges::replace(path_string, '\\', '/');
-
-	std::wstring blur_script_path = (blur.resources_path / "lib/blur.py").wstring();
+	std::filesystem::path blur_script_path = (blur.resources_path / "lib/blur.py");
 
 	auto settings_json = settings.to_json();
-	if (!settings_json.success || !settings_json.json) {
-		return {
-			.success = false,
-			.error_message = settings_json.error_message,
-		};
-	}
+	if (!settings_json)
+		return tl::unexpected(settings_json.error());
+
+	auto app_settings_json = app_settings.to_json();
+	if (!app_settings_json)
+		return tl::unexpected(app_settings_json.error());
+
+	settings_json->update(*app_settings_json); // adds new keys from app settings (and overrides dupes)
+
+#if defined(__linux__)
+	bool vapoursynth_plugins_bundled = std::filesystem::exists(blur.resources_path / "vapoursynth-plugins");
+#endif
 
 	RenderCommands commands;
+
+	std::wstring path_string = input_path.wstring();
+	std::ranges::replace(path_string, '\\', '/');
 
 	// Build vspipe command
 	commands.vspipe = { L"-p",
@@ -25,7 +34,7 @@ RenderCommandsResult FrameRender::build_render_commands(
 		                L"-a",
 		                L"video_path=" + path_string,
 		                L"-a",
-		                L"settings=" + u::towstring(settings_json.json->dump()),
+		                L"settings=" + u::towstring(settings_json->dump()),
 #if defined(__APPLE__)
 		                L"-a",
 		                std::format(L"macos_bundled={}", blur.used_installer ? L"true" : L"false"),
@@ -41,7 +50,11 @@ RenderCommandsResult FrameRender::build_render_commands(
 		                L"-a",
 		                L"enable_lsmash=true",
 #endif
-		                blur_script_path,
+#if defined(__linux__)
+		                L"-a",
+		                std::format(L"linux_bundled={}", vapoursynth_plugins_bundled ? L"true" : L"false"),
+#endif
+		                blur_script_path.wstring(),
 		                L"-" };
 
 	// Build ffmpeg command
@@ -65,13 +78,10 @@ RenderCommandsResult FrameRender::build_render_commands(
 	};
 	// clang-format on
 
-	return {
-		.success = true,
-		.commands = commands,
-	};
+	return commands;
 }
 
-FrameRender::DoRenderResult FrameRender::do_render(RenderCommands render_commands, const BlurSettings& settings) {
+tl::expected<void, std::string> FrameRender::do_render(RenderCommands render_commands, const BlurSettings& settings) {
 	namespace bp = boost::process;
 
 	std::ostringstream vspipe_stderr_output;
@@ -80,32 +90,44 @@ FrameRender::DoRenderResult FrameRender::do_render(RenderCommands render_command
 		boost::asio::io_context io_context;
 		bp::pipe vspipe_stdout;
 		bp::ipstream vspipe_stderr;
+		bp::ipstream ffmpeg_stderr;
 
 #ifndef _DEBUG
 		if (settings.advanced.debug) {
 #endif
-			u::log(L"VSPipe command: {} {}", blur.vspipe_path.wstring(), u::join(render_commands.vspipe, L" "));
-			u::log(L"FFmpeg command: {} {}", blur.ffmpeg_path.wstring(), u::join(render_commands.ffmpeg, L" "));
+			DEBUG_LOG("VSPipe command: {} {}", blur.vspipe_path, u::tostring(u::join(render_commands.vspipe, L" ")));
+			DEBUG_LOG("FFmpeg command: {} {}", blur.ffmpeg_path, u::tostring(u::join(render_commands.ffmpeg, L" ")));
 #ifndef _DEBUG
 		}
 #endif
 
 		bp::environment env = boost::this_process::environment();
 
-		if (blur.used_installer) {
 #if defined(__APPLE__)
-			env["PYTHONHOME"] = (blur.resources_path / "python").string();
-			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").string();
-#elif defined(__linux__)
-			env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").string();
-			env["PYTHONHOME"] = (blur.resources_path / "python").string();
-			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").string();
-#endif
+		if (blur.used_installer) {
+			env["PYTHONHOME"] = (blur.resources_path / "python").native();
+			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
+			env["VK_ICD_FILENAMES"] = (blur.resources_path / "vulkan/icd.d/MoltenVK_icd.json").native();
 		}
+#endif
+
+#if defined(__linux__)
+		if (blur.used_installer) {
+			env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
+			env["PYTHONHOME"] = (blur.resources_path / "python").native();
+			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
+		} else {
+			auto app_config = config_app::get_app_config();
+			if (!app_config.vapoursynth_lib_path.empty()) {
+				env["LD_LIBRARY_PATH"] = app_config.vapoursynth_lib_path;
+				env["PYTHONPATH"] = app_config.vapoursynth_lib_path + "/python3.12/site-packages";
+			}
+		}
+#endif
 
 		// Declare as local variables first, then move or assign
 		auto vspipe_process = bp::child(
-			blur.vspipe_path.wstring(),
+			boost::filesystem::path{ blur.vspipe_path },
 			bp::args(render_commands.vspipe),
 			bp::std_out > vspipe_stdout,
 			bp::std_err > vspipe_stderr,
@@ -118,7 +140,7 @@ FrameRender::DoRenderResult FrameRender::do_render(RenderCommands render_command
 		);
 
 		auto ffmpeg_process = bp::child(
-			blur.ffmpeg_path.wstring(),
+			boost::filesystem::path{ blur.ffmpeg_path },
 			bp::args(render_commands.ffmpeg),
 			bp::std_in < vspipe_stdout,
 			bp::std_out.null(),
@@ -138,14 +160,11 @@ FrameRender::DoRenderResult FrameRender::do_render(RenderCommands render_command
 			}
 		});
 
-		vspipe_process.detach();
-		ffmpeg_process.detach();
-
 		while (vspipe_process.running() || ffmpeg_process.running()) {
 			if (m_to_kill) {
 				ffmpeg_process.terminate();
 				vspipe_process.terminate();
-				u::log("frame render: killed processes early");
+				DEBUG_LOG("frame render: killed processes early");
 				m_to_kill = false;
 			}
 
@@ -161,26 +180,17 @@ FrameRender::DoRenderResult FrameRender::do_render(RenderCommands render_command
 				"vspipe exit code: {}, ffmpeg exit code: {}", vspipe_process.exit_code(), ffmpeg_process.exit_code()
 			);
 
-		bool success =
-			ffmpeg_process.exit_code() == 0; // vspipe_process.exit_code() == 0 && ffmpeg_process.exit_code() == 0;
-
-		// todo: check why vspipe isnt returning 0
-
-		if (!success)
+		if (ffmpeg_process.exit_code() != 0) { // || vspipe_process.exit_code() != 0;
+			                                   // todo: check why vspipe isnt returning 0
 			remove_temp_path();
+			return tl::unexpected(vspipe_stderr_output.str());
+		}
 
-		return {
-			.success = success,
-			.error_message = vspipe_stderr_output.str(),
-		};
+		return {};
 	}
 	catch (const boost::system::system_error& e) {
 		u::log_error("Process error: {}", e.what());
-
-		return {
-			.success = false,
-			.error_message = e.what(),
-		};
+		return tl::unexpected(e.what());
 	}
 }
 
@@ -202,44 +212,31 @@ bool FrameRender::remove_temp_path() {
 	return res;
 }
 
-FrameRender::RenderResponse FrameRender::render(const std::filesystem::path& input_path, const BlurSettings& settings) {
+tl::expected<std::filesystem::path, std::string> FrameRender::render(
+	const std::filesystem::path& input_path, const BlurSettings& settings, const GlobalAppSettings& app_settings
+) {
 	if (!blur.initialised)
-		return {
-			.success = false,
-			.error_message = "Blur not initialised",
-		};
+		return tl::unexpected("Blur not initialised");
 
 	if (!std::filesystem::exists(input_path)) {
-		return {
-			.success = false,
-			.error_message = "Input path does not exist",
-		};
+		return tl::unexpected("Input path does not exist");
 	}
 
 	if (!create_temp_path()) {
 		u::log("failed to make temp path");
-		return {
-			.success = false,
-			.error_message = "Failed to make temp path",
-		};
+		return tl::unexpected("Failed to make temp path");
 	}
 
 	std::filesystem::path output_path = m_temp_path / "render.jpg";
 
 	// render
-	auto render_commands_res = build_render_commands(input_path, output_path, settings);
-	if (!render_commands_res.success || !render_commands_res.commands) {
-		return {
-			.success = false,
-			.error_message = render_commands_res.error_message,
-		};
-	}
+	auto render_commands = build_render_commands(input_path, output_path, settings, app_settings);
+	if (!render_commands)
+		return tl::unexpected(render_commands.error());
 
-	auto render_res = do_render(*render_commands_res.commands, settings);
+	auto render_res = do_render(*render_commands, settings);
+	if (!render_res)
+		return tl::unexpected(render_res.error());
 
-	return {
-		.success = render_res.success,
-		.output_path = output_path,
-		.error_message = render_res.error_message,
-	};
+	return output_path;
 }

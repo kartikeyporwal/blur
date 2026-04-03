@@ -1,43 +1,11 @@
 #include "utils.h"
 #include "common/config_presets.h"
+#include "common/config_app.h"
 
 namespace {
 	bool init_hw = false;
-	std::set<std::string> hw_accels;
-	std::set<std::string> hw_encoders;
-}
-
-std::string u::trim(std::string_view str) {
-	str.remove_prefix(std::min(str.find_first_not_of(" \t\r\v\n"), str.size()));
-	str.remove_suffix(std::min(str.size() - str.find_last_not_of(" \t\r\v\n") - 1, str.size()));
-
-	return std::string(str);
-}
-
-std::string u::random_string(int len) {
-	std::string str("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
-
-	std::random_device rd;
-	std::mt19937 generator(rd());
-
-	std::shuffle(str.begin(), str.end(), generator);
-
-	return str.substr(0, len);
-}
-
-std::vector<std::string> u::split_string(std::string str, const std::string& delimiter) {
-	std::vector<std::string> output;
-
-	size_t pos = 0;
-	while ((pos = str.find(delimiter)) != std::string::npos) {
-		std::string token = str.substr(0, pos);
-		output.push_back(token);
-		str.erase(0, pos + delimiter.length());
-	}
-
-	output.push_back(str);
-
-	return output;
+	// std::set<std::string> hw_accels; // TODO: re-add?
+	// std::set<std::string> hw_encoders;
 }
 
 // NOLINTBEGIN gpt ass code
@@ -83,6 +51,39 @@ std::string u::tostring(const std::wstring& wstr) {
 
 // NOLINTEND
 
+std::string u::trim(std::string_view str) {
+	str.remove_prefix(std::min(str.find_first_not_of(" \t\r\v\n"), str.size()));
+	str.remove_suffix(std::min(str.size() - str.find_last_not_of(" \t\r\v\n") - 1, str.size()));
+
+	return std::string(str);
+}
+
+std::string u::random_string(int len) {
+	std::string str("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+
+	std::random_device rd;
+	std::mt19937 generator(rd());
+
+	std::shuffle(str.begin(), str.end(), generator);
+
+	return str.substr(0, len);
+}
+
+std::vector<std::string> u::split_string(std::string str, const std::string& delimiter) {
+	std::vector<std::string> output;
+
+	size_t pos = 0;
+	while ((pos = str.find(delimiter)) != std::string::npos) {
+		std::string token = str.substr(0, pos);
+		output.push_back(token);
+		str.erase(0, pos + delimiter.length());
+	}
+
+	output.push_back(str);
+
+	return output;
+}
+
 std::string u::to_lower(const std::string& str) {
 	std::string out = str;
 
@@ -110,7 +111,7 @@ std::optional<std::filesystem::path> u::get_program_path(const std::string& prog
 
 	fs::path program_path = bp::search_path(program_name);
 
-	std::filesystem::path path(program_path.string());
+	std::filesystem::path path(program_path.native());
 
 	if (!std::filesystem::exists(path))
 		return {};
@@ -150,46 +151,6 @@ float u::lerp(float value, float target, float reset_speed, float snap_offset) {
 		value = target;
 
 	return value;
-}
-
-constexpr int64_t PERIOD = 1;
-constexpr int64_t TOLERANCE = 1'020'000;
-constexpr int64_t MAX_TICKS = PERIOD * 9'500;
-
-void u::sleep(double seconds) {
-#ifndef WIN32
-	std::this_thread::sleep_for(std::chrono::duration<double>(seconds));
-#else // KILLLLL WINDOWS
-	using namespace std;
-	using namespace chrono;
-
-	auto t = high_resolution_clock::now();
-	auto target = t + nanoseconds(int64_t(seconds * 1e9));
-
-	static HANDLE timer;
-	if (!timer)
-		timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
-
-	int64_t maxTicks = PERIOD * 9'500;
-	for (;;) {
-		int64_t remaining = (target - t).count();
-		int64_t ticks = (remaining - TOLERANCE) / 100;
-		if (ticks <= 0)
-			break;
-		if (ticks > maxTicks)
-			ticks = maxTicks;
-
-		LARGE_INTEGER due;
-		due.QuadPart = -ticks;
-		SetWaitableTimerEx(timer, &due, 0, NULL, NULL, NULL, 0);
-		WaitForSingleObject(timer, INFINITE);
-		t = high_resolution_clock::now();
-	}
-
-	// spin
-	while (high_resolution_clock::now() < target)
-		YieldProcessor();
-#endif
 }
 
 std::filesystem::path u::get_resources_path() {
@@ -267,31 +228,31 @@ u::VideoInfo u::get_video_info(const std::filesystem::path& path) {
 
 	bp::environment env = boost::this_process::environment();
 
-	if (blur.used_installer) {
-#ifdef __linux__
-		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").string();
+#if defined(__linux__)
+	if (blur.used_installer)
+		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
 #endif
-	}
 
 	bp::ipstream pipe_stream;
 	bp::child c(
-		blur.ffprobe_path.wstring(),
+		boost::filesystem::path{ blur.ffprobe_path },
 		"-v",
 		"error",
 		"-select_streams",
 		"v:0", // only want to analyse first video stream
 		"-show_entries",
-		"stream=codec_type,codec_name,duration,color_range,sample_rate,r_frame_rate",
+		"stream=codec_type,codec_name,duration,color_range,sample_rate,r_frame_rate,pix_fmt,color_space,color_transfer,"
+		"color_primaries",
 		"-show_entries",
 		"format=duration",
 		"-of",
 		"default=noprint_wrappers=1",
-		path.wstring(),
+		boost::filesystem::path{ path },
 		bp::std_out > pipe_stream,
-		bp::std_err > bp::null,
+		bp::std_err.null(),
 		env
 #ifdef _WIN32
-		,
+			,
 		bp::windows::create_no_window
 #endif
 	);
@@ -323,9 +284,20 @@ u::VideoInfo u::get_video_info(const std::filesystem::path& path) {
 		else if (line.find("color_range=") != std::string::npos) {
 			info.color_range = line.substr(line.find('=') + 1);
 		}
+		else if (line.find("pix_fmt=") != std::string::npos) {
+			info.pix_fmt = line.substr(line.find('=') + 1);
+		}
+		else if (line.find("color_space=") != std::string::npos) {
+			info.color_space = line.substr(line.find('=') + 1);
+		}
+		else if (line.find("color_transfer=") != std::string::npos) {
+			info.color_transfer = line.substr(line.find('=') + 1);
+		}
+		else if (line.find("color_primaries=") != std::string::npos) {
+			info.color_primaries = line.substr(line.find('=') + 1);
+		}
 		else if (line.find("sample_rate=") != std::string::npos) {
-			std::string sample_rate_str = line.substr(line.find('=') + 1);
-			info.sample_rate = std::stoi(sample_rate_str);
+			info.sample_rate = std::stoi(line.substr(line.find('=') + 1));
 		}
 		else if (line.find("r_frame_rate=") != std::string::npos) {
 			std::string frame_rate_str = line.substr(line.find('=') + 1);
@@ -355,34 +327,25 @@ u::VideoInfo u::get_video_info(const std::filesystem::path& path) {
 	return info;
 }
 
-std::vector<u::EncodingDevice> u::get_hardware_encoding_devices() {
+bool u::test_hardware_device(const std::string& device_type) {
 	namespace bp = boost::process;
-
-	static std::vector<EncodingDevice> devices;
-
-	if (init_hw)
-		return devices;
-	else
-		init_hw = true;
 
 	bp::environment env = boost::this_process::environment();
 
-	if (blur.used_installer) {
-#ifdef __linux__
-		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").string();
+#if defined(__linux__)
+	if (blur.used_installer)
+		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
 #endif
-	}
 
-	// First check available hardware acceleration methods
-	bp::ipstream pipe_stream;
+	bp::ipstream error_stream;
 	bp::child c(
-		blur.ffmpeg_path.wstring(),
-		"-v",
+		boost::filesystem::path{ blur.ffmpeg_path },
+		"-init_hw_device",
+		(device_type + "=hw"),
+		"-loglevel",
 		"error",
-		"-hide_banner",
-		"-hwaccels",
-		bp::std_out > pipe_stream,
-		bp::std_err > bp::null,
+		bp::std_out.null(),
+		bp::std_err > error_stream,
 		env
 #ifdef _WIN32
 		,
@@ -391,118 +354,61 @@ std::vector<u::EncodingDevice> u::get_hardware_encoding_devices() {
 	);
 
 	std::string line;
-
-	bool in_accel_section = false;
-
-	while (pipe_stream && std::getline(pipe_stream, line)) {
-		boost::algorithm::trim(line);
-
-		if (line == "Hardware acceleration methods:") {
-			in_accel_section = true;
-			continue;
-		}
-
-		if (in_accel_section && !line.empty()) {
-			hw_accels.insert(line);
-		}
+	if (std::getline(error_stream, line)) {
+		// any error output means the device is not available
+		c.terminate();
+		return false;
 	}
 
 	c.wait();
+	return true;
+}
 
-	// Now check specific encoders
-	bp::ipstream encoder_stream;
-	bp::child c2(
-		blur.ffmpeg_path.wstring(),
-		"-v",
-		"error",
-		"-hide_banner",
-		"-encoders",
-		bp::std_out > encoder_stream,
-		bp::std_err > bp::null,
-		env
-#ifdef _WIN32
-		,
-		bp::windows::create_no_window
-#endif
-	);
+std::vector<u::EncodingDevice> u::get_hardware_encoding_devices() {
+	static std::vector<EncodingDevice> devices;
 
-	bool in_encoder_section = false;
+	if (init_hw)
+		return devices;
+	else
+		init_hw = true;
 
-	while (encoder_stream && std::getline(encoder_stream, line)) {
-		boost::algorithm::trim(line);
+	struct HardwareTest {
+		std::string type;
+		std::string method;
+		std::string ffmpeg_device_type;
+	};
 
-		if (line == "------") {
-			in_encoder_section = true;
-			continue;
-		}
-
-		if (in_encoder_section && !line.empty() && u::contains(line, "V....D")) {
-			auto tmp = u::split_string(line, "V....D ")[1];
-			auto encoder = u::split_string(tmp, " ")[0];
-			hw_encoders.insert(encoder);
-		}
-	}
-
-	c2.wait();
-
-	// Check for NVIDIA (NVENC)
-	bool has_nvidia = false;
-	if (u::contains(hw_accels, "cuda") || u::contains(hw_accels, "nvenc") || u::contains(hw_accels, "nvdec")) {
-		for (const auto& encoder : hw_encoders) {
-			if (u::contains(encoder, "nvenc")) {
-				EncodingDevice device;
-				device.type = "nvidia";
-				device.method = "nvenc";
-				device.is_primary = true;
-				devices.push_back(device);
-				break;
-			}
-		}
-	}
-
-	// Check for AMD (AMF)
-	bool has_amd = false;
-	for (const auto& encoder : hw_encoders) {
-		if (u::contains(encoder, "amf")) {
-			has_amd = true;
-			EncodingDevice device;
-			device.type = "amd";
-			device.method = "amf";
-			device.is_primary = devices.empty(); // Primary if no other device yet
-			devices.push_back(device);
-			break;
-		}
-	}
-
-	// Check for Intel (QSV)
-	if (u::contains(hw_accels, "qsv")) {
-		for (const auto& encoder : hw_encoders) {
-			if (u::contains(encoder, "qsv")) {
-				EncodingDevice device;
-				device.type = "intel";
-				device.method = "qsv";
-				device.is_primary = devices.empty(); // Primary if no other device yet
-				devices.push_back(device);
-				break;
-			}
-		}
-	}
-
-	// Check for Mac (VideoToolbox)
-	bool has_mac = false;
+	std::vector<HardwareTest> tests = {
+		// in order of priority
+		// e.g. if you have nvidia + amd/intel you'll want to use nvidia over them i assume
+		{ .type = "nvidia", .method = "nvenc", .ffmpeg_device_type = "cuda" },
+		{ .type = "amd", .method = "amf", .ffmpeg_device_type = "d3d11va" },
+		{ .type = "intel", .method = "qsv", .ffmpeg_device_type = "qsv" },
 #ifdef __APPLE__
-	for (const auto& encoder : hw_encoders) {
-		if (u::contains(encoder, "videotoolbox")) {
-			has_mac = true;
-			EncodingDevice device;
-			device.type = "mac";
-			device.method = "videotoolbox";
-			device.is_primary = devices.empty(); // Primary if no other device yet
-			devices.push_back(device);
-			break;
+		{ .type = "mac", .method = "videotoolbox", .ffmpeg_device_type = "videotoolbox" }
+#endif
+	};
+
+	std::vector<std::future<bool>> futures;
+	futures.reserve(tests.size());
+
+	for (const auto& test : tests) {
+		futures.push_back(std::async(std::launch::async, [&test]() {
+			return test_hardware_device(test.ffmpeg_device_type);
+		}));
+	}
+
+	for (size_t i = 0; i < tests.size(); ++i) {
+		if (futures[i].get()) {
+			devices.emplace_back(
+				EncodingDevice{
+					.type = tests[i].type,
+					.method = tests[i].method,
+					.is_primary = devices.empty(),
+				}
+			);
 		}
 	}
-#endif
 
 	return devices;
 }
@@ -546,28 +452,28 @@ std::vector<std::string> u::get_supported_presets(bool gpu_encoding, const std::
 	std::vector<std::string> filtered_presets;
 
 	for (const auto& preset : available_presets) {
-		if (hw_encoders.contains(preset.codec)) {
-			filtered_presets.push_back(preset.name);
-		}
+		// if (hw_encoders.contains(preset.codec)) {
+		filtered_presets.push_back(preset.name);
+		// }
 	}
 
 	return filtered_presets;
 }
 
-std::vector<std::wstring> u::ffmpeg_string_to_args(const std::wstring& str) {
-	std::vector<std::wstring> args;
+std::vector<std::string> u::ffmpeg_string_to_args(const std::string& str) {
+	std::vector<std::string> args;
 
 	bool in_quote = false;
-	std::wstring current_arg;
+	std::string current_arg;
 
 	for (size_t i = 0; i < str.length(); i++) {
-		wchar_t c = str[i];
+		char c = str[i];
 
-		if (c == L'"') {
+		if (c == '"') {
 			in_quote = !in_quote;
 			// don't add the quote character to the argument
 		}
-		else if (c == L' ' && !in_quote) {
+		else if (c == ' ' && !in_quote) {
 			if (!current_arg.empty()) {
 				args.push_back(current_arg);
 				current_arg.clear();
@@ -586,36 +492,45 @@ std::vector<std::wstring> u::ffmpeg_string_to_args(const std::wstring& str) {
 }
 
 std::map<int, std::string> u::get_rife_gpus() {
-#ifdef __APPLE__ // todo: rife mac issue
-	return {};
-#endif
-
 	namespace bp = boost::process;
 
 	bp::environment env = boost::this_process::environment();
 
-#if defined(__APPLE__) || defined(__linux__)
+#if defined(__APPLE__)
 	if (blur.used_installer) {
-		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").string();
-		env["PYTHONHOME"] = (blur.resources_path / "python").string();
-		env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").string();
+		env["PYTHONHOME"] = (blur.resources_path / "python").native();
+		env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
+		env["VK_ICD_FILENAMES"] = (blur.resources_path / "vulkan/icd.d/MoltenVK_icd.json").native();
 	}
 #endif
 
-	std::wstring get_gpus_script_path = (blur.resources_path / "lib/get_rife_gpus.py").wstring();
+#if defined(__linux__)
+	bool vapoursynth_plugins_bundled = std::filesystem::exists(blur.resources_path / "vapoursynth-plugins");
+	if (blur.used_installer) {
+		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
+		env["PYTHONHOME"] = (blur.resources_path / "python").native();
+		env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
+	}
+#endif
+
+	std::filesystem::path get_gpus_script_path = (blur.resources_path / "lib/get_rife_gpus.py");
 
 	bp::ipstream err_stream;
 
 	bp::child c(
-		blur.vspipe_path.wstring(),
-		L"-c",
-		L"y4m",
-#ifdef __linux__
-		L"-a",
-		L"linux_bundled=true",
+		boost::filesystem::path{ blur.vspipe_path },
+		"-c",
+		"y4m",
+#if defined(__APPLE__)
+		"-a",
+		std::format("macos_bundled={}", blur.used_installer ? "true" : "false"),
 #endif
-		get_gpus_script_path,
-		L"-",
+#if defined(__linux__)
+		"-a",
+		std::format("linux_bundled={}", vapoursynth_plugins_bundled ? "true" : "false"),
+#endif
+		boost::filesystem::path{ get_gpus_script_path },
+		"-",
 		bp::std_out.null(),
 		bp::std_err > err_stream,
 		env
@@ -652,54 +567,63 @@ int u::get_fastest_rife_gpu_index(
 	const std::filesystem::path& rife_model_path,
 	const std::filesystem::path& benchmark_video_path
 ) {
-#ifdef __APPLE__ // todo: rife mac issue
-	return 0;
-#endif
-
 	namespace bp = boost::process;
 
 	std::map<int, float> benchmark_map;
 	float fastest_time = FLT_MAX;
 	int fastest_index = -1;
 
-	std::wstring benchmark_gpus_script_path = (blur.resources_path / "lib/benchmark_rife_gpus.py").wstring();
+	std::filesystem::path benchmark_gpus_script_path = (blur.resources_path / "lib/benchmark_rife_gpus.py");
 
 	for (const auto& [gpu_index, gpu_name] : gpu_map) {
 		bp::environment env = boost::this_process::environment();
 
-#if defined(__APPLE__) || defined(__linux__)
+#if defined(__APPLE__)
 		if (blur.used_installer) {
-			env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").string();
-			env["PYTHONHOME"] = (blur.resources_path / "python").string();
-			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").string();
+			env["PYTHONHOME"] = (blur.resources_path / "python").native();
+			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
+			env["VK_ICD_FILENAMES"] = (blur.resources_path / "vulkan/icd.d/MoltenVK_icd.json").native();
+		}
+#endif
+
+#if defined(__linux__)
+		bool vapoursynth_plugins_bundled = std::filesystem::exists(blur.resources_path / "vapoursynth-plugins");
+		if (blur.used_installer) {
+			env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
+			env["PYTHONHOME"] = (blur.resources_path / "python").native();
+			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
 		}
 #endif
 
 		auto start = std::chrono::steady_clock::now();
 
 		bp::child c(
-			blur.vspipe_path.wstring(),
-			L"-c",
-			L"y4m",
-			L"-p",
-			L"-a",
-			std::format(L"rife_model={}", rife_model_path.wstring()),
-			L"-a",
-			std::format(L"rife_gpu_index={}", gpu_index),
-			L"-a",
-			std::format(L"benchmark_video_path={}", benchmark_video_path.wstring()),
+			boost::filesystem::path{ blur.vspipe_path },
+			"-c",
+			"y4m",
+			"-p",
+			"-a",
+			std::format("rife_model={}", rife_model_path),
+			"-a",
+			std::format("rife_gpu_index={}", gpu_index),
+			"-a",
+			std::format("benchmark_video_path={}", benchmark_video_path),
 #if defined(__APPLE__)
-			L"-a",
-			std::format(L"macos_bundled={}", blur.used_installer ? L"true" : L"false"),
+			"-a",
+			std::format("macos_bundled={}", blur.used_installer ? "true" : "false"),
+#endif
+#if defined(__linux__)
+			"-a",
+			std::format("linux_bundled={}", vapoursynth_plugins_bundled ? "true" : "false"),
 #endif
 #if defined(_WIN32)
-			L"-a",
-			L"enable_lsmash=true",
+			"-a",
+			"enable_lsmash=true",
 #endif
-			L"-e",
-			L"2",
-			benchmark_gpus_script_path,
-			L"-",
+			"-e",
+			"2",
+			boost::filesystem::path{ benchmark_gpus_script_path },
+			"-",
 			bp::std_out.null(),
 			bp::std_err.null(),
 			env
@@ -708,8 +632,6 @@ int u::get_fastest_rife_gpu_index(
 			bp::windows::create_no_window
 #endif
 		);
-
-		c.detach();
 
 		bool killed_early = false;
 
@@ -743,6 +665,63 @@ int u::get_fastest_rife_gpu_index(
 	}
 
 	return fastest_index;
+}
+
+void u::set_fastest_rife_gpu(BlurSettings& settings) {
+	auto app_config = config_app::get_app_config();
+	if (app_config.rife_gpu_index != -1)
+		return;
+
+	if (!blur.initialised_rife_gpus || blur.rife_gpus.empty())
+		return;
+
+	if (blur.rife_gpus.size() == 1) {
+		// only one gpu, so it's the fastest. don't need to benchmark.
+		app_config.rife_gpu_index = 0;
+	}
+	else {
+		auto sample_video_path = blur.settings_path / "sample_video.mp4";
+		if (!std::filesystem::exists(sample_video_path))
+			return;
+
+		auto rife_model_path = settings.get_rife_model_path();
+		if (!rife_model_path)
+			return;
+
+		int fastest_gpu_index = u::get_fastest_rife_gpu_index(blur.rife_gpus, *rife_model_path, sample_video_path);
+		app_config.rife_gpu_index = fastest_gpu_index;
+	}
+
+	// todo: this is dumb
+	auto app_config_path = config_app::get_app_config_path();
+	config_app::create(app_config_path, app_config);
+
+	u::log("set rife_gpu_index to the fastest gpu ({})", app_config.rife_gpu_index);
+}
+
+void u::verify_gpu_encoding(BlurSettings& settings) {
+	if (!blur.initialised)
+		return;
+
+	auto app_config = config_app::get_app_config();
+
+	if (app_config.gpu_type.empty() || !u::contains(u::get_available_gpu_types(), app_config.gpu_type)) {
+		app_config.gpu_type = u::get_primary_gpu_type();
+	}
+
+	if (app_config.gpu_type == "cpu") {
+		settings.gpu_encoding = false;
+	}
+
+	auto available_codecs = u::get_supported_presets(settings.gpu_encoding, app_config.gpu_type);
+
+	if (!u::contains(available_codecs, settings.encode_preset)) {
+		settings.encode_preset = "h264";
+	}
+
+	// todo: this is dumb
+	auto app_config_path = config_app::get_app_config_path();
+	config_app::create(app_config_path, app_config);
 }
 
 #ifdef WIN32

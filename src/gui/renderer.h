@@ -26,7 +26,7 @@ namespace gui::renderer {
 	inline ui::Container notification_container;
 	inline ui::Container nav_container;
 
-	bool redraw_window(bool rendered_last, bool force_render);
+	bool redraw_window(bool rendered_last, bool want_to_render);
 
-	void on_render_finished(Render* render, const RenderResult& result);
+	void on_render_finished(Render* render, const tl::expected<RenderResult, std::string>& result);
 }

@@ -83,9 +83,32 @@ def generate_svp_strings(
     return [json.dumps(obj) for obj in [super_json, vectors_json, smooth_json]]
 
 
+def svp(
+    _video: vs.VideoNode,
+    is_full_color_range: bool,
+    super_string: str,
+    vectors_string: str,
+    smooth_str: str,
+):
+    def process(video):
+        super = core.svp1.Super(video, super_string)
+        vectors = core.svp1.Analyse(super["clip"], super["data"], video, vectors_string)
+        return core.svp2.SmoothFps(
+            video,
+            super["clip"],
+            super["data"],
+            vectors["clip"],
+            vectors["data"],
+            smooth_str,
+        )
+
+    return u.with_format(_video, is_full_color_range, vs.YUV420P8, process)
+
+
 def interpolate_svp(
-    video,
-    new_fps,
+    video: vs.VideoNode,
+    is_full_color_range: bool,
+    new_fps: int,
     preset=DEFAULT_PRESET,
     algorithm=DEFAULT_ALGORITHM,
     blocksize=DEFAULT_BLOCKSIZE,
@@ -94,9 +117,6 @@ def interpolate_svp(
     masking=DEFAULT_MASKING,
     gpu=DEFAULT_GPU,
 ):
-    if not isinstance(video, vs.VideoNode):
-        raise vs.Error("interpolate: input not a video")
-
     preset = preset.lower()
 
     if preset not in LEGACY_PRESETS and preset not in NEW_PRESETS:
@@ -107,20 +127,7 @@ def interpolate_svp(
         new_fps, preset, algorithm, blocksize, overlap, speed, masking, gpu
     )
 
-    # interpolate
-    super = core.svp1.Super(video, super_string)
-    vectors = core.svp1.Analyse(super["clip"], super["data"], video, vectors_string)
-
-    return core.svp2.SmoothFps(
-        video,
-        super["clip"],
-        super["data"],
-        vectors["clip"],
-        vectors["data"],
-        smooth_string,
-        src=video,
-        fps=video.fps,
-    )
+    return svp(video, is_full_color_range, super_string, vectors_string, smooth_string)
 
 
 def change_fps(clip, fpsnum, fpsden=1):  # this is just directly from havsfunc
@@ -175,32 +182,22 @@ def interpolate_mvtools(
     )
 
 
-def interpolate_rife(video, new_fps: int, model_path: str, gpu_index=int):
+def interpolate_rife(
+    _video: vs.VideoNode,
+    is_full_color_range: bool,
+    new_fps: int,
+    model_path: str,
+    gpu_index: int,
+):
     u.check_model_path(model_path)
 
-    orig_format = video.format
-    needs_conversion = orig_format.id != vs.RGBS
-
-    if needs_conversion:
-        video = core.resize.Bicubic(
+    def process(video):
+        return core.rife.RIFE(
             video,
-            format=vs.RGBS,
-            matrix_in_s="709" if orig_format.color_family == vs.YUV else None,
+            fps_num=new_fps,
+            fps_den=1,
+            model_path=model_path,
+            gpu_id=gpu_index,
         )
 
-    video = core.rife.RIFE(
-        video,
-        fps_num=new_fps,
-        fps_den=1,
-        model_path=model_path,
-        gpu_id=gpu_index,
-    )
-
-    if needs_conversion:
-        video = core.resize.Bicubic(
-            video,
-            format=orig_format.id,
-            matrix_s="709" if orig_format.color_family == vs.YUV else None,
-        )
-
-    return video
+    return u.with_format(_video, is_full_color_range, vs.RGBS, process)

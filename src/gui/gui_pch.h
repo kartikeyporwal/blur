@@ -1,7 +1,7 @@
 #pragma once
 
 // NOLINTEND(misc-include-cleaner)
-#include <common/common_pch.h>
+#include <common/common_pch.h> // still need to include here cause cmake cant inherit common projects pch + have project-specific pch
 
 #include "render/primitives/color.h"
 #include "render/primitives/point.h"

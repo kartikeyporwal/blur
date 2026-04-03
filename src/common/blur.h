@@ -4,11 +4,14 @@
 #include "config_blur.h"
 
 const std::string APPLICATION_NAME = "blur";
-const std::string BLUR_VERSION = "2.23";
+const std::string BLUR_VERSION = "2.44";
 
 class Blur { // todo: switch all the classes which could be namespaces into namespaces
 public:
 	bool initialised = false;
+	bool exiting = false;
+	std::atomic<bool> cleanup_performed;
+	bool in_atexit = false;
 
 	bool verbose = true;
 	bool using_preview = false;
@@ -23,21 +26,16 @@ public:
 	std::filesystem::path ffprobe_path;
 	std::filesystem::path vspipe_path;
 
-	struct InitialisationResponse {
-		bool success;
-		std::string error_message;
-	};
+	tl::expected<void, std::string> initialise(bool _verbose, bool _using_preview);
 
-	InitialisationResponse initialise(bool _verbose, bool _using_preview);
-
-	void cleanup() const;
+	void cleanup();
 
 	void initialise_base_temp_path();
 
 	[[nodiscard]] std::optional<std::filesystem::path> create_temp_path(const std::string& folder_name) const;
 	static bool remove_temp_path(const std::filesystem::path& temp_path);
 
-	static updates::UpdateCheckRes check_updates();
+	static tl::expected<updates::UpdateCheckRes, std::string> check_updates();
 	static void update(
 		const std::string& tag,
 		const std::optional<std::function<void(const std::string& text, bool done)>>& progress_callback = {}
@@ -49,6 +47,8 @@ public:
 
 	void initialise_rife_gpus();
 	void pick_fastest_rife_gpu(BlurSettings& settings);
+
+	void setup_signal_handlers();
 };
 
 inline Blur blur;

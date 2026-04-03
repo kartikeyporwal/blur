@@ -33,8 +33,13 @@ struct BlurSettings {
 	float blur_gamma = 1.f;
 
 	bool interpolate = true;
+#ifdef __APPLE__
+	std::string interpolated_fps = "600";
+	std::string interpolation_method = "rife";
+#else
 	std::string interpolated_fps = "1200";
 	std::string interpolation_method = "svp";
+#endif
 
 	bool pre_interpolate = false;
 	std::string pre_interpolated_fps = "360";
@@ -53,7 +58,11 @@ struct BlurSettings {
 	int quality = 16;
 
 	bool deduplicate = true;
+#ifdef __APPLE__
+	std::string deduplicate_method = "rife";
+#else
 	std::string deduplicate_method = "svp";
+#endif
 
 	bool preview = true;
 	bool detailed_filenames = false;
@@ -62,13 +71,9 @@ struct BlurSettings {
 	bool gpu_decoding = true;
 	bool gpu_interpolation = true;
 	bool gpu_encoding = false;
-	std::string gpu_type;
-	int rife_gpu_index = -1;
 
 	bool override_advanced = false;
 	AdvancedSettings advanced;
-
-	bool blur_amount_tied_to_fps = true;
 
 public:
 	BlurSettings();
@@ -77,22 +82,9 @@ public:
 
 	void verify_gpu_encoding();
 
-	struct ToJsonResult {
-		bool success;
-		std::optional<nlohmann::json> json;
-		std::string error_message;
-	};
+	[[nodiscard]] tl::expected<nlohmann::json, std::string> to_json() const;
 
-	[[nodiscard]] ToJsonResult to_json() const;
-
-	struct GetRifeModelResult {
-		bool success;
-		std::optional<std::filesystem::path> rife_model_path;
-		std::string error_message;
-	};
-
-	[[nodiscard]] GetRifeModelResult get_rife_model_path() const;
-	void set_fastest_rife_gpu();
+	[[nodiscard]] tl::expected<std::filesystem::path, std::string> get_rife_model_path() const;
 };
 
 namespace config_blur {
@@ -110,20 +102,31 @@ namespace config_blur {
 
 	const std::string CONFIG_FILENAME = ".blur-config.cfg";
 
+	std::string generate_config_string(const BlurSettings& settings, bool concise);
+
 	void create(const std::filesystem::path& filepath, const BlurSettings& current_settings = BlurSettings());
 
-	struct ConfigValidationResponse {
-		bool success;
-		std::string error;
-	};
+	std::string export_concise(const BlurSettings& settings);
 
-	ConfigValidationResponse validate(BlurSettings& config, bool fix);
+	tl::expected<void, std::string> validate(BlurSettings& config, bool fix);
 
+	BlurSettings parse(const std::string& config_content);
 	BlurSettings parse(const std::filesystem::path& config_filepath);
+	BlurSettings parse_from_map(
+		const std::map<std::string, std::string>& config_map,
+		const std::optional<std::filesystem::path>& config_filepath = {}
+	);
+
 	BlurSettings parse_global_config();
 
 	std::filesystem::path get_global_config_path();
 	std::filesystem::path get_config_filename(const std::filesystem::path& video_folder);
 	BlurSettings get_global_config();
-	BlurSettings get_config(const std::filesystem::path& config_filepath, bool use_global);
+
+	struct ConfigRes {
+		BlurSettings config;
+		bool is_global = false;
+	};
+
+	ConfigRes get_config(const std::filesystem::path& config_filepath, bool use_global);
 }

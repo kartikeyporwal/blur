@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/config_app.h"
 #include "common/rendering_frame.h"
 #include "../../ui/ui.h"
 
@@ -12,8 +13,11 @@ namespace gui::components::configs { // naming it configs to avoid conflict with
 	inline BlurSettings settings;
 	inline BlurSettings current_global_settings;
 
+	inline GlobalAppSettings app_settings;
+	inline GlobalAppSettings current_app_settings;
+
 	inline bool loaded_config = false;
-	inline bool loading_config = false;
+	inline bool should_load_config = true;
 
 	inline bool interpolate_scale = true;
 	inline float interpolated_fps_mult = 5.f;
@@ -31,10 +35,10 @@ namespace gui::components::configs { // naming it configs to avoid conflict with
 	void set_interpolated_fps();
 	void set_pre_interpolated_fps();
 
-	void options(ui::Container& container, BlurSettings& settings);
-	void config_preview(ui::Container& container, BlurSettings& settings);
-	void preview(ui::Container& header_container, ui::Container& content_container, BlurSettings& settings);
-	void option_information(ui::Container& container, BlurSettings& settings);
+	void options(ui::Container& container);
+	void config_preview(ui::Container& container);
+	void preview(ui::Container& header_container, ui::Container& content_container);
+	void option_information(ui::Container& container);
 
 	void parse_interp();
 	void save_config();

@@ -4,6 +4,7 @@
 #include "../sdl.h"
 
 const int SCROLLBAR_WIDTH = 3;
+const int SCROLLBAR_GAP = 2;
 
 namespace {
 	SDL_SystemCursor desired_cursor = SDL_SYSTEM_CURSOR_DEFAULT;
@@ -47,10 +48,13 @@ namespace {
 			container.get_usable_rect().y + ((container.scroll_y / total_content_height) * visible_height);
 
 		gfx::Rect scrollbar_rect(
-			container.rect.x + container.rect.w - SCROLLBAR_WIDTH, scrollbar_y, SCROLLBAR_WIDTH, scrollbar_height
+			container.rect.x + container.rect.w - SCROLLBAR_GAP - SCROLLBAR_WIDTH,
+			scrollbar_y,
+			SCROLLBAR_WIDTH,
+			scrollbar_height
 		);
 
-		render::rounded_rect_filled(scrollbar_rect, gfx::Color(255, 255, 255, 50), 2.f);
+		render::rounded_rect_filled(scrollbar_rect, gfx::Color(255, 255, 255, 50), FLT_MAX);
 	}
 }
 

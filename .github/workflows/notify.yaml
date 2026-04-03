@@ -1,0 +1,90 @@
+name: Discord Release Notification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  notify-discord:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord notification
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // get release data
+            let release;
+            if (context.eventName === 'workflow_dispatch') {
+              const { data } = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo
+              });
+              release = data;
+            } else {
+              release = context.payload.release;
+            }
+
+            // determine notification type and webhook
+            const isPrerelease = release.prerelease;
+            const webhookUrl = isPrerelease
+              ? process.env.DISCORD_WEBHOOK_RELEASES_BETA
+              : process.env.DISCORD_WEBHOOK_RELEASES;
+            const roleId = isPrerelease
+              ? process.env.DISCORD_ROLE_RELEASES_BETA
+              : process.env.DISCORD_ROLE_RELEASES;
+            const releaseType = isPrerelease ? 'Beta Release' : 'Release';
+
+            if (!webhookUrl) {
+              core.setFailed(`Missing webhook URL for ${releaseType}`);
+              return;
+            }
+
+            // process changelog - remove everything up to and including first '---'
+            let changelog = release.body || '';
+            const dividerIndex = changelog.search(/^\s*---\s*$/m);
+            if (dividerIndex !== -1) {
+              changelog = changelog.substring(dividerIndex).replace(/^\s*---\s*\n?/m, '');
+            }
+            // remove leading blank lines
+            changelog = changelog.replace(/^\s*\n+/, '');
+
+            // build discord payload
+            const payload = {
+              content: roleId ? `<@&${roleId}>` : '',
+              embeds: [{
+                title: `New ${releaseType}: ${release.name || release.tag_name}`,
+                url: release.html_url,
+                description: [
+                  '## Downloads',
+                  `- [Windows (.exe)](https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/${release.tag_name}/blur-Windows-Installer-x64.exe)`,
+                  `- [macOS (.dmg)](https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/${release.tag_name}/blur-macOS-Release-arm64.dmg)`,
+                  `- [Linux (.tar.gz)](https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/${release.tag_name}/blur-Linux-Release-x64.tar.gz)`,
+                  '',
+                  changelog
+                ].join('\n'),
+                color: 3447003,
+                timestamp: release.published_at
+              }]
+            };
+
+            // send to discord
+            try {
+              const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+
+              if (!response.ok) {
+                const error = await response.text();
+                core.setFailed(`Discord webhook failed: ${response.status} ${error}`);
+              } else {
+                console.log('Discord notification sent successfully');
+              }
+            } catch (error) {
+              core.setFailed(`Failed to send Discord notification: ${error.message}`);
+            }
+        env:
+          DISCORD_WEBHOOK_RELEASES: ${{ secrets.DISCORD_WEBHOOK_RELEASES }}
+          DISCORD_WEBHOOK_RELEASES_BETA: ${{ secrets.DISCORD_WEBHOOK_RELEASES_BETA }}
+          DISCORD_ROLE_RELEASES: ${{ vars.DISCORD_ROLE_RELEASES }}
+          DISCORD_ROLE_RELEASES_BETA: ${{ vars.DISCORD_ROLE_RELEASES_BETA }}

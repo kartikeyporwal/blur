@@ -9,16 +9,15 @@ namespace {
 	bool set_cursor_this_frame = false;
 }
 
-void sdl::initialise() {
+tl::expected<void, std::string> sdl::initialise() {
 	SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1"); // idk mpv example says to
 	// SDL_SetHint(SDL_HINT_MAC_SCROLL_MOMENTUM, "1");
 	SDL_SetHint(
 		SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1"
 	); // allows the screen to auto sleep. WHY IS THIS DISABLED BY DEFAULT?
 
-	if (!SDL_Init(SDL_INIT_VIDEO)) {
-		throw std::runtime_error("SDL initialization failed");
-	}
+	if (!SDL_Init(SDL_INIT_VIDEO))
+		return tl::unexpected("SDL initialization failed");
 
 	// Initialise notification system
 	auto config = config_app::get_app_config();
@@ -62,9 +61,8 @@ void sdl::initialise() {
 	window =
 		SDL_CreateWindow("Blur", 591, 381, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 
-	if (!window) {
-		throw std::runtime_error(std::format("Failed to create SDL window: {}", SDL_GetError()));
-	}
+	if (!window)
+		return tl::unexpected(std::format("Failed to create SDL window: {}", SDL_GetError()));
 
 	SDL_SetWindowMinimumSize(window, 450, 250);
 
@@ -75,22 +73,22 @@ void sdl::initialise() {
 
 	// create opengl context
 	gl_context = SDL_GL_CreateContext(window);
-	if (!gl_context) {
-		throw std::runtime_error("Failed to create SDL GL context");
-	}
+	if (!gl_context)
+		return tl::unexpected("Failed to create SDL GL context");
 
 	if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) { // NOLINT(cppcoreguidelines-pro-type-cstyle-cast)
 		                                                          // ^ c lib
-		throw std::runtime_error("Failed to initialise GLAD");
+		return tl::unexpected("Failed to initialise GLAD");
 	}
 
 	SDL_GL_MakeCurrent(window, gl_context);
 	SDL_GL_SetSwapInterval(1); // enable vsync
 	SDL_ShowWindow(window);
 
-	if (!render::init(window, gl_context)) {
-		throw std::runtime_error("Failed to initialise rendering");
-	}
+	if (!render::init(window, gl_context))
+		return tl::unexpected("Failed to initialise rendering");
+
+	return {};
 }
 
 void sdl::cleanup() {

@@ -45,12 +45,12 @@ bool desktop_notification::show(const std::string& title, const std::string& mes
 		text_elements.Item(1).AppendChild(toast_xml.CreateTextNode(winrt::to_hstring(message)));
 
 		// // ToastImageAndText02
-		// auto image_elements = toast_xml.GetElementsByTagName(L"image");
+		// auto image_elements = toast_xml.GetElementsByTagName("image");
 		// auto image_element = image_elements.Item(0).as<Windows::Data::Xml::Dom::XmlElement>();
 		// image_element.SetAttribute(
-		// 	L"src", winrt::hstring(L"file:///[something]/blur.ico")
+		// 	"src", winrt::hstring("file:///[something]/blur.ico")
 		// );
-		// image_element.SetAttribute(L"alt", winrt::hstring(L"Blur icon"));
+		// image_element.SetAttribute("alt", winrt::hstring("Blur icon"));
 
 		auto toast = ToastNotification(toast_xml);
 

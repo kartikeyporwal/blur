@@ -396,23 +396,32 @@ bool ui::update_slider(const Container& container, AnimatedElement& element) {
 					);
 				}
 
+				bool value_changed = false;
+
 				std::visit(
 					[&](auto* value_ptr) {
-						using T = std::remove_pointer_t<decltype(value_ptr)>;
 						if (value_ptr) {
+							using T = std::remove_pointer_t<decltype(value_ptr)>;
+							T old_value = *value_ptr;
+
 							std::stringstream ss(slider_data.editing_text);
-							T value{};
-							if (ss >> value) {
-								*value_ptr = value;
+							T new_value{};
+							if (ss >> new_value) {
+								*value_ptr = new_value;
 							}
 							else {
-								// invalid text value, set to 0
-								*value_ptr = T{ 0 }; // 0 for int, 0.0f for float
+								*value_ptr = T{ 0 }; // fallback to 0 or 0.0f
 							}
+
+							value_changed = (*value_ptr != old_value);
 						}
 					},
 					slider_data.current_value
 				);
+
+				if (value_changed && slider_data.on_change) {
+					(*slider_data.on_change)(slider_data.current_value);
+				}
 			}
 
 			// Clamp cursor/selection just in case
