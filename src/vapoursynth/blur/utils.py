@@ -1,3 +1,4 @@
+import sys
 import vapoursynth as vs
 from vapoursynth import core
 
@@ -10,10 +11,9 @@ class BlurException(Exception):
 
 
 def load_plugins(extension: str):
-    plugin_dir = Path("../vapoursynth-plugins")
-    ignored = {
-        f"libbestsource{extension}",
-    }
+    # Path is relative to this file (lib/blur/utils.py), not CWD — required for AppImage
+    plugin_dir = Path(__file__).parent.parent.parent / "vapoursynth-plugins"
+    ignored = {f"libbestsource{extension}"} if sys.platform == "darwin" else set()
 
     for plugin in plugin_dir.glob(f"*{extension}"):
         if plugin.name not in ignored:

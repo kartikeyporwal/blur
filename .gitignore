@@ -10,6 +10,9 @@ test_outputs/
 build/
 bin/
 out/
+blur-Linux-Release-x64*/
+sample*/
+tmp/*
 
 # visual studio
 .vs

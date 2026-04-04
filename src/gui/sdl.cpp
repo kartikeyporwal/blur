@@ -62,7 +62,7 @@ tl::expected<void, std::string> sdl::initialise() {
 		SDL_CreateWindow("Blur", 591, 381, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 
 	if (!window)
-		return tl::unexpected("Failed to create SDL window");
+		return tl::unexpected(std::format("Failed to create SDL window: {}", SDL_GetError()));
 
 	SDL_SetWindowMinimumSize(window, 450, 250);
 

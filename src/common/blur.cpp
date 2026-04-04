@@ -27,8 +27,8 @@ tl::expected<void, std::string> Blur::initialise(bool _verbose, bool _using_prev
 	used_installer = std::filesystem::exists(resources_path / "lib\\vapoursynth\\vspipe.exe") &&
 	                 std::filesystem::exists(resources_path / "lib\\ffmpeg\\ffmpeg.exe");
 #elif defined(__linux__)
-	// todo
-	used_installer = false;
+	used_installer = std::filesystem::exists(resources_path / "vapoursynth/vspipe") &&
+	                 std::filesystem::exists(resources_path / "ffmpeg/ffmpeg");
 #elif defined(__APPLE__)
 	used_installer = std::filesystem::exists(resources_path / "vapoursynth/vspipe") &&
 	                 std::filesystem::exists(resources_path / "ffmpeg/ffmpeg");
@@ -40,7 +40,11 @@ tl::expected<void, std::string> Blur::initialise(bool _verbose, bool _using_prev
 		ffmpeg_path = (blur.resources_path / "lib\\ffmpeg\\ffmpeg.exe");
 		ffprobe_path = (blur.resources_path / "lib\\ffmpeg\\ffprobe.exe");
 #elif defined(__linux__)
-		// todo
+		vspipe_path = (blur.resources_path / "vapoursynth/vspipe").wstring();
+		ffmpeg_path = (blur.resources_path / "ffmpeg/ffmpeg").wstring();
+		ffprobe_path = (blur.resources_path / "ffmpeg/ffprobe").wstring();
+
+
 #elif defined(__APPLE__)
 		vspipe_path = (blur.resources_path / "vapoursynth/vspipe");
 		ffmpeg_path = (blur.resources_path / "ffmpeg/ffmpeg");

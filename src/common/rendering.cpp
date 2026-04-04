@@ -130,7 +130,7 @@ Render::Render(
 
 	// parse config file (do it now, not when rendering. nice for batch rendering the same file with different settings)
 	auto config_res = config_blur::get_config(
-		config_path.has_value() ? output_path.value() : config_blur::get_config_filename(m_video_folder),
+		config_path.has_value() ? config_path.value() : config_blur::get_config_filename(m_video_folder),
 		!config_path.has_value() // use global only if no config path is specified
 	);
 
@@ -203,6 +203,9 @@ tl::expected<RenderCommands, std::string> Render::build_render_commands() {
 #if defined(__APPLE__)
 		                L"-a",
 		                std::format(L"macos_bundled={}", blur.used_installer ? L"true" : L"false"),
+#elif defined(__linux__)
+		                L"-a",
+		                std::format(L"linux_bundled={}", true ? L"true" : L"false"),
 #endif
 #if defined(_WIN32)
 		                L"-a",
@@ -421,10 +424,16 @@ tl::expected<RenderResult, std::string> Render::do_render(RenderCommands render_
 #endif
 
 #if defined(__linux__)
-		auto app_config = config_app::get_app_config();
-		if (!app_config.vapoursynth_lib_path.empty()) {
-			env["LD_LIBRARY_PATH"] = app_config.vapoursynth_lib_path;
-			env["PYTHONPATH"] = app_config.vapoursynth_lib_path + "/python3.12/site-packages";
+		if (blur.used_installer) {
+			env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
+			env["PYTHONHOME"] = (blur.resources_path / "python").native();
+			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
+		} else {
+			auto app_config = config_app::get_app_config();
+			if (!app_config.vapoursynth_lib_path.empty()) {
+				env["LD_LIBRARY_PATH"] = app_config.vapoursynth_lib_path;
+				env["PYTHONPATH"] = app_config.vapoursynth_lib_path + "/python3.12/site-packages";
+			}
 		}
 #endif
 

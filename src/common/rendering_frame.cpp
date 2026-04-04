@@ -38,6 +38,13 @@ tl::expected<RenderCommands, std::string> FrameRender::build_render_commands(
 #if defined(__APPLE__)
 		                L"-a",
 		                std::format(L"macos_bundled={}", blur.used_installer ? L"true" : L"false"),
+#elif defined(__linux__)
+		                L"-a",
+		                std::format(L"linux_bundled={}", true ? L"true" : L"false"),
+#endif
+#ifdef WIN32
+		                L"-a",
+		                L"lsmash=true",
 #endif
 #if defined(_WIN32)
 		                L"-a",
@@ -105,10 +112,16 @@ tl::expected<void, std::string> FrameRender::do_render(RenderCommands render_com
 #endif
 
 #if defined(__linux__)
-		auto app_config = config_app::get_app_config();
-		if (!app_config.vapoursynth_lib_path.empty()) {
-			env["LD_LIBRARY_PATH"] = app_config.vapoursynth_lib_path;
-			env["PYTHONPATH"] = app_config.vapoursynth_lib_path + "/python3.12/site-packages";
+		if (blur.used_installer) {
+			env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
+			env["PYTHONHOME"] = (blur.resources_path / "python").native();
+			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
+		} else {
+			auto app_config = config_app::get_app_config();
+			if (!app_config.vapoursynth_lib_path.empty()) {
+				env["LD_LIBRARY_PATH"] = app_config.vapoursynth_lib_path;
+				env["PYTHONPATH"] = app_config.vapoursynth_lib_path + "/python3.12/site-packages";
+			}
 		}
 #endif
 
@@ -132,6 +145,7 @@ tl::expected<void, std::string> FrameRender::do_render(RenderCommands render_com
 			bp::std_in < vspipe_stdout,
 			bp::std_out.null(),
 			bp::std_err.null(),
+			env,
 			io_context
 #ifdef _WIN32
 			,

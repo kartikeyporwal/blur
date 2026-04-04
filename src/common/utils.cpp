@@ -226,6 +226,13 @@ std::filesystem::path u::get_settings_path() {
 u::VideoInfo u::get_video_info(const std::filesystem::path& path) {
 	namespace bp = boost::process;
 
+	bp::environment env = boost::this_process::environment();
+
+#if defined(__linux__)
+	if (blur.used_installer)
+		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
+#endif
+
 	bp::ipstream pipe_stream;
 	bp::child c(
 		boost::filesystem::path{ blur.ffprobe_path },
@@ -242,7 +249,8 @@ u::VideoInfo u::get_video_info(const std::filesystem::path& path) {
 		"default=noprint_wrappers=1",
 		boost::filesystem::path{ path },
 		bp::std_out > pipe_stream,
-		bp::std_err.null()
+		bp::std_err.null(),
+		env
 #ifdef _WIN32
 			,
 		bp::windows::create_no_window
@@ -322,6 +330,13 @@ u::VideoInfo u::get_video_info(const std::filesystem::path& path) {
 bool u::test_hardware_device(const std::string& device_type) {
 	namespace bp = boost::process;
 
+	bp::environment env = boost::this_process::environment();
+
+#if defined(__linux__)
+	if (blur.used_installer)
+		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
+#endif
+
 	bp::ipstream error_stream;
 	bp::child c(
 		boost::filesystem::path{ blur.ffmpeg_path },
@@ -330,7 +345,8 @@ bool u::test_hardware_device(const std::string& device_type) {
 		"-loglevel",
 		"error",
 		bp::std_out.null(),
-		bp::std_err > error_stream
+		bp::std_err > error_stream,
+		env
 #ifdef _WIN32
 		,
 		bp::windows::create_no_window
@@ -490,6 +506,11 @@ std::map<int, std::string> u::get_rife_gpus() {
 
 #if defined(__linux__)
 	bool vapoursynth_plugins_bundled = std::filesystem::exists(blur.resources_path / "vapoursynth-plugins");
+	if (blur.used_installer) {
+		env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
+		env["PYTHONHOME"] = (blur.resources_path / "python").native();
+		env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
+	}
 #endif
 
 	std::filesystem::path get_gpus_script_path = (blur.resources_path / "lib/get_rife_gpus.py");
@@ -567,6 +588,11 @@ int u::get_fastest_rife_gpu_index(
 
 #if defined(__linux__)
 		bool vapoursynth_plugins_bundled = std::filesystem::exists(blur.resources_path / "vapoursynth-plugins");
+		if (blur.used_installer) {
+			env["LD_LIBRARY_PATH"] = (blur.resources_path / "lib").native();
+			env["PYTHONHOME"] = (blur.resources_path / "python").native();
+			env["PYTHONPATH"] = (blur.resources_path / "python/lib/python3.12/site-packages").native();
+		}
 #endif
 
 		auto start = std::chrono::steady_clock::now();

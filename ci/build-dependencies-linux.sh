@@ -5,9 +5,41 @@ out_dir=out
 
 echo "Building dependencies for Linux"
 
+apt-get update
+apt-get install -y libxxhash-dev \
+  wget \
+  unzip \
+  xz-utils \
+  git \
+  meson \
+  nasm \
+  cmake \
+  libfftw3-dev \
+  llvm llvm-dev clang build-essential \
+  fuse \
+  libgl1-mesa-dev \
+  kmod
+
+# Install versioned llvm-config for akarin (try 16, 17, 18 in order)
+apt-get install -y llvm-16 2>/dev/null || \
+  apt-get install -y llvm-17 2>/dev/null || \
+  apt-get install -y llvm-18 2>/dev/null || true
+
 # clean outputs every run
 rm -rf $out_dir
 mkdir -p $out_dir
+
+download_library() {
+  local url="$1"
+  local filename="$2"
+  local out_path="$3"
+
+  dest_path="$out_dir/$out_path"
+  mkdir -p "$dest_path"
+
+  echo "Downloading $filename"
+  wget -q "$url" -O "$dest_path/$filename"
+}
 
 download_archive() {
   local url="$1"
@@ -52,52 +84,102 @@ download_archive() {
   cd "$original_dir"
 }
 
-download_library() {
-  local url="$1"
-  local filename="$2"
-  local out_path="$3"
-  local dir_name="${filename%.*}" # Remove file extension to get dir name
+build() {
+  local repo="$1"
+  local pull_args="$2"
+  local name="$3"
+  local build_cmd="$4"
+  local lib_path="$5"
+  local out_path="$6"
 
-  mkdir -p download/$dir_name
-  cd download/$dir_name
+  echo "--- Building $name ---"
 
-  if [ ! -f "$filename" ]; then
-    echo "Downloading $filename..."
-    wget -q "$url" -O "$filename"
+  mkdir -p build
+  cd build
+
+  if [ ! -d "$name" ]; then
+    echo "Cloning $name..."
+    # shellcheck disable=SC2086
+    git clone $pull_args "$repo" "$name"
+    cd "$name"
   else
-    echo "$filename already exists. Skipping download."
+    echo "Updating $name..."
+    cd "$name"
+    git pull
   fi
 
-  # copy to output directory
+  eval "$build_cmd"
+
+  # copy built stuff
   dest_path="../../$out_dir/$out_path"
   mkdir -p "$dest_path"
-  echo "Copying $filename to $dest_path"
-  cp "$filename" "$dest_path"
+
+  if [[ -n "$lib_path" ]]; then
+    echo "Copying $name libraries to $dest_path"
+    find "$lib_path" -name "*.so" -exec cp {} "$dest_path" \;
+  else
+    echo "Skipping copy: lib_path is empty"
+  fi
 
   cd ../..
 }
 
-download_model_files() {
-  local base_url="$1"
-  local model_name="$2"
-  local file_list=("${@:3}")
+# downloads / builds
 
-  echo "Downloading model: $model_name"
-  local model_dir="$out_dir/models/$model_name"
+## nv-codec-headers 12.1 — compatible with NVIDIA driver 530-549 (nvenc API 12.1).
+## Pre-built BtbN archives old enough to use 12.1 are no longer available (2-year
+## retention expired), so we pin the headers and build FFmpeg from source instead.
+echo "--- Installing nv-codec-headers n12.1.14.0 ---"
+mkdir -p download/nv-codec-headers
+cd download/nv-codec-headers
+if [ ! -f "Makefile" ]; then
+  wget -q https://github.com/FFmpeg/nv-codec-headers/archive/refs/tags/n12.1.14.0.tar.gz -O nv-codec-headers.tar.gz
+  tar -xzf nv-codec-headers.tar.gz --strip-components=1
+  rm nv-codec-headers.tar.gz
+fi
+make install PREFIX=/usr/local
+cd ../..
 
-  mkdir -p "$model_dir"
-  echo "Created directory: $model_dir"
+## ffmpeg 7.1 — built from source with shared libs and nvenc 12.1 headers
+echo "--- Building FFmpeg 7.1 ---"
+apt-get install -y -q \
+  libx264-dev libx265-dev libvpx-dev libmp3lame-dev libopus-dev \
+  libvorbis-dev libass-dev libfreetype6-dev libfontconfig1-dev \
+  libdav1d-dev libwebp-dev libxvidcore-dev libssl-dev libzimg-dev \
+  libbz2-dev
 
-  for file in "${file_list[@]}"; do
-    local file_url="$base_url/$file"
-    local output_path="$model_dir/$file"
+mkdir -p download/ffmpeg-src
+cd download/ffmpeg-src
+if [ ! -f "configure" ]; then
+  wget -q https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz -O ffmpeg.tar.xz
+  tar -xf ffmpeg.tar.xz --strip-components=1
+  rm ffmpeg.tar.xz
+fi
+./configure \
+  --prefix=/usr/local \
+  --enable-shared --disable-static \
+  --enable-gpl --enable-version3 \
+  --disable-debug --disable-doc \
+  --enable-libx264 --enable-libx265 \
+  --enable-libvpx --enable-libmp3lame \
+  --enable-libopus --enable-libvorbis \
+  --enable-libass --enable-libfreetype \
+  --enable-fontconfig --enable-libdav1d \
+  --enable-libwebp --enable-libxvid \
+  --enable-ffnvcodec \
+  --enable-zlib --enable-bzlib --enable-lzma --enable-iconv \
+  --extra-cflags="-I/usr/local/include" \
+  --extra-ldflags="-L/usr/local/lib"
+make -j"$(nproc)"
+make install
+ldconfig
+cd ../..
 
-    echo "Downloading $file_url to $output_path"
-    wget -q "$file_url" -O "$output_path"
-  done
-
-  echo "Model $model_name download completed"
-}
+mkdir -p "$out_dir/ffmpeg" "$out_dir/ffmpeg-shared/bin" "$out_dir/ffmpeg-shared/lib"
+cp /usr/local/bin/ffmpeg  "$out_dir/ffmpeg/ffmpeg"
+cp /usr/local/bin/ffprobe "$out_dir/ffmpeg-shared/bin/ffprobe"
+find /usr/local/lib -maxdepth 1 \( -name "libav*.so*" -o -name "libsw*.so*" -o -name "libpostproc*.so*" \) \
+  -exec cp -aP {} "$out_dir/ffmpeg-shared/lib/" \;
 
 ## svpflow
 download_archive \
@@ -106,45 +188,105 @@ download_archive \
   "vapoursynth-plugins" \
   "svpflow-4.2.0.142/lib-linux"
 
-# bestsource
-download_library \
-  "https://github.com/f0e/blur-plugin-builds/releases/latest/download/bestsource.so" \
-  "bestsource.so" \
-  "vapoursynth-plugins"
-
-download_library \
-  "https://github.com/f0e/blur-plugin-builds/releases/latest/download/libbestsource.so" \
-  "libbestsource.so" \
-  "vapoursynth-plugins"
-
-# akarin
-download_library \
-  "https://github.com/f0e/blur-plugin-builds/releases/latest/download/libakarin.so" \
-  "libakarin.so" \
-  "vapoursynth-plugins"
-
-# mvtools
-download_library \
-  "https://github.com/f0e/blur-plugin-builds/releases/latest/download/libmvtools.so" \
-  "libmvtools.so" \
-  "vapoursynth-plugins"
-
-# adjust
-download_library \
-  "https://github.com/f0e/Vapoursynth-adjust/releases/latest/download/libadjust.so" \
-  "libadjust.so" \
-  "vapoursynth-plugins"
-
-# rife-ncnn-vulkan
+## rife ncnn vulkan (prebuilt)
 download_library \
   "https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/releases/download/r9_mod_v33/librife_linux_x86-64.so" \
   "librife_linux_x86-64.so" \
   "vapoursynth-plugins"
 
-# rife model
+## python for vapoursynth
+mkdir -p download/python
+cd download/python
+
+if [ ! -d "python" ]; then
+  wget -q https://github.com/astral-sh/python-build-standalone/releases/download/20250317/cpython-3.12.9+20250317-x86_64-unknown-linux-gnu-install_only.tar.gz -O python.tar.gz
+  mkdir -p python
+  tar -xzf python.tar.gz -C python --strip-components 1
+  rm python.tar.gz
+fi
+
+# copy python to output directory
+python_dest_path="../../$out_dir/python"
+mkdir -p "$python_dest_path"
+cp -R python/* "$python_dest_path"
+
+cd ../..
+
+$out_dir/python/bin/pip install --upgrade pip
+$out_dir/python/bin/pip install cython meson ninja cmake
+
+# builds
+## vapoursynth
+
+PATH="$PWD/$out_dir/python/bin:$PATH"
+PYTHON_PREFIX="$PWD/$out_dir/python"
+
+build "https://github.com/vapoursynth/vapoursynth.git" "--recurse-submodules" "vapoursynth" "
+meson setup build-dev --prefix=/usr/local
+ninja -C build-dev
+ninja -C build-dev install
+meson setup build-wheel --prefix=/usr/local -Dbuild_wheel=true
+ninja -C build-wheel
+ninja -C build-wheel install
+" "" "vapoursynth"
+
+### copy vspipe
+cp /usr/local/lib/python3.12/site-packages/vapoursynth/vspipe $out_dir/vapoursynth
+
+## bestsource
+build "https://github.com/vapoursynth/bestsource.git" "--depth 1 --recurse-submodules --shallow-submodules --remote-submodules" "bestsource" "
+meson setup build
+ninja -C build
+" "build" "vapoursynth-plugins"
+
+## mvtools
+build "https://github.com/dubhater/vapoursynth-mvtools.git" "" "mvtools" "
+meson setup build
+ninja -C build
+" "build" "vapoursynth-plugins"
+
+## akarin — use the first available llvm-config (16, 17, or 18)
+LLVM_CFG=$(command -v llvm-config-16 || command -v llvm-config-17 || command -v llvm-config-18 || command -v llvm-config)
+rm -rf build/akarin
+build "https://github.com/Jaded-Encoding-Thaumaturgy/akarin-vapoursynth-plugin.git" "" "akarin" "
+git checkout 689cba74e7c71caf808b6feaaba0a32981c1956f
+LLVM_CONFIG=${LLVM_CFG} meson build
+ninja -C build
+" "build" "vapoursynth-plugins"
+
+## adjust (build from source — prebuilt requires glibc 2.38; must be after VapourSynth)
+build "https://github.com/f0e/Vapoursynth-adjust.git" "--depth 1" "adjust" "
+meson setup build
+ninja -C build
+" "build" "vapoursynth-plugins"
+
+## rife models
+download_model_files() {
+  local base_url="$1"
+  local model_name="$2"
+  local file_list=("${@:3}")
+
+  echo "Downloading model: $model_name"
+  local model_dir="$out_dir/models/$model_name"
+  mkdir -p "$model_dir"
+
+  for file in "${file_list[@]}"; do
+    local file_url="$base_url/$file"
+    local output_path="$model_dir/$file"
+    echo "Downloading $file_url to $output_path"
+    wget -q "$file_url" -O "$output_path"
+  done
+
+  echo "Model $model_name download completed"
+}
+
+echo "Starting model downloads..."
+
 download_model_files \
-  "https://raw.githubusercontent.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/c3ec6aabc07c8fa37a4f58d7fed9e2ad1fc1b13f/models/rife-v4.26_ensembleFalse" \
+  "https://raw.githubusercontent.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/a2579e656dac7909a66e7da84578a2f80ccba41c/models/rife-v4.26_ensembleFalse" \
   "rife-v4.26_ensembleFalse" \
   "flownet.bin" "flownet.param"
+
+echo "Model downloads completed"
 
 echo "done"

@@ -1,0 +1,14 @@
+ci/vcpkg/
+ci/build/
+ci/out/
+ci/download/
+ci/overlay-ports/sdl3/fix-freebsd.patch
+bin/
+build/
+*.AppImage
+blur-Linux-Release-x64/
+.git/
+blur-Linux-Release-x64*/
+sample*/
+tmp*/
+./blur*

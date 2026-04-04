@@ -30,7 +30,7 @@ I often release beta versions with new functionality before I think they're stab
 
 ### Linux notes
 
-Requires manual installation of dependencies. [See here for the list of dependencies.](#linux-dependency-requirements)
+The Linux release is a self-contained directory — no manual dependency installation needed. [See the build instructions below.](#building-on-linux)
 
 ## Features
 
@@ -203,27 +203,239 @@ You can customise the SVP interpolation settings even further by manually defini
 
 These options are not visible by default, add them to your config and they will be used.
 
-## Linux dependency requirements
+## Building on Linux
 
-### General list of things you need
+The Linux build is fully automated using Docker. It compiles all dependencies (FFmpeg, VapourSynth, Python, plugins) and the blur binary inside a container, then produces a self-contained `blur-Linux-Release-x64/` directory you can run anywhere.
 
-If your distro isn't listed below, here's a list of the things you'll need to install.
+### Requirements
+
+- [Docker](https://docs.docker.com/engine/install/) (any recent version)
+- Git
+
+Alternatively, if you prefer to install dependencies manually (without Docker), you'll need:
 
 - VapourSynth
 - FFmpeg
-- VapourSynth plugins (install to your system vapoursynth plugin path or [your blur binary directory]/vapoursynth-plugins)
+- VapourSynth plugins (install to your system vapoursynth plugin path or `[your blur binary directory]/vapoursynth-plugins`)
   - [SVPflow](https://web.archive.org/web/20190322064557/http://www.svp-team.com/files/gpl/svpflow-4.2.0.142.zip)
-  - [BestSource](https://github.com/vapoursynth/bestsource) ([my automated build](https://github.com/f0e/blur-plugin-builds/releases/latest))
-  - [MVTools](https://github.com/dubhater/vapoursynth-mvtools) ([my automated build](https://github.com/f0e/blur-plugin-builds/releases/latest))
-  - [Akarin](https://github.com/AkarinVS/vapoursynth-plugin) (or this [fork which supports newer LLVM versions](https://github.com/Jaded-Encoding-Thaumaturgy/akarin-vapoursynth-plugin)) ([my automated build](https://github.com/f0e/blur-plugin-builds/releases/latest))
+  - [BestSource](https://github.com/vapoursynth/bestsource) ([automated build](https://github.com/f0e/blur-plugin-builds/releases/latest))
+  - [MVTools](https://github.com/dubhater/vapoursynth-mvtools) ([automated build](https://github.com/f0e/blur-plugin-builds/releases/latest))
+  - [Akarin](https://github.com/Jaded-Encoding-Thaumaturgy/akarin-vapoursynth-plugin) ([automated build](https://github.com/f0e/blur-plugin-builds/releases/latest))
   - [RIFE-ncnn-Vulkan](https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/releases/latest)
   - [Adjust](https://github.com/f0e/Vapoursynth-adjust/releases/latest)
 
-### Arch required packages
+### Step 1 — Clone the repository
 
-`paru -S vapoursynth ffmpeg vapoursynth-plugin-svpflow vapoursynth-plugin-bestsource vapoursynth-plugin-mvtools vapoursynth-plugin-vsakarin-av1an-git vapoursynth-plugin-rife-ncnn-vulkan`
+```bash
+git clone https://github.com/f0e/blur --recursive
+cd blur
+```
 
-And manually install [adjust](https://github.com/f0e/Vapoursynth-adjust/releases/latest)
+The `--recursive` flag clones the imgui and stb submodules. If you already cloned without it, run:
+
+```bash
+git submodule update --init --recursive
+```
+
+### Step 2 — Build the Docker image
+
+This installs all build tools and compiles every dependency (FFmpeg, VapourSynth, Python 3.12, VS plugins). It takes **30–60 minutes** the first time. Subsequent builds are fast thanks to Docker's layer cache — the deps layer is only rebuilt if `ci/build-dependencies-linux.sh` changes.
+
+```bash
+docker build -t blur-linux -f ci/Dockerfile .
+```
+
+### Step 3 — Extract the distribution
+
+```bash
+docker run --rm -v "$(pwd):/out" blur-linux
+```
+
+This copies `blur-Linux-Release-x64/` into your current directory.
+
+### Step 4 — Run
+
+```bash
+# GUI
+./blur-Linux-Release-x64/blur
+
+# CLI (run with --help for usage)
+./blur-Linux-Release-x64/blur-cli --help
+```
+
+No additional setup, no system dependencies to install.
+
+### Distribution layout
+
+```
+blur-Linux-Release-x64/
+├── blur                      # GUI application
+├── blur-cli                  # Command-line interface
+├── ffmpeg/
+│   └── ffmpeg                # Bundled FFmpeg
+├── vapoursynth/
+│   └── vspipe                # VapourSynth pipe binary
+├── vapoursynth-plugins/      # VS plugins (mvtools, akarin, svpflow, ...)
+├── python/                   # Standalone Python 3.12 (relocatable)
+│   └── lib/python3.12/
+│       └── site-packages/
+│           └── vapoursynth/  # VapourSynth Python module
+└── lib/                      # Bundled shared libraries + VS scripts
+    ├── blur.py               # Main VapourSynth processing script
+    ├── blur/                 # VS helper modules
+    └── *.so                  # SDL3, FFmpeg, VapourSynth, etc.
+```
+
+### Rebuilding after code changes
+
+The deps layer is cached. Only the blur binary is recompiled:
+
+```bash
+docker build -t blur-linux -f ci/Dockerfile .
+docker run --rm -v "$(pwd):/out" blur-linux
+```
+
+This will create:
+- A directory `./blur-Linux-Release-x64/` with the `./blur-Linux-Release-x64/blur` and `./blur-Linux-Release-x64/blur-cli`
+- A standalone AppImage `./blur-cli-Linux-x86_64.AppImage` 
+- A standalone AppImage `./blur-Linux-x86_64.AppImage`
+- A bash script `./blur.sh` with `APPIMAGE_EXTRACT_AND_RUN` enabled to run `./blur-Linux-x86_64.AppImage` inside Docker container
+- A bash script `./blur-cli.sh` with `APPIMAGE_EXTRACT_AND_RUN` enabled to run `./blur-cli-Linux-x86_64.AppImage` inside Docker container
+
+
+This build should act as a static build that needs no further installations. The build includes most of the required deps and handles everything ffmpeg, ffprobe with CUDA support, vapoursynth, etc. provided that your host machine have proper Nvidia related drivers installed. If you are getting any errors related to libs, deps; it would mean you might have conflict with host deps, or deps/libs missing in the build.
+
+
+### Manual build (without Docker)
+
+If you prefer to build without Docker, install the packages listed in `ci/Dockerfile`, then run:
+
+```bash
+cd ci && ./build-dependencies-linux.sh
+cd ..
+ci/build-blur-linux.sh
+ci/package-linux.sh
+```
+
+---
+
+### Installing manually (Arch Linux)
+
+If you already have system-level VapourSynth and FFmpeg installed and just want to use the blur binary directly (without the bundled environment):
+
+```bash
+paru -S vapoursynth ffmpeg vapoursynth-plugin-svpflow vapoursynth-plugin-bestsource \
+        vapoursynth-plugin-mvtools vapoursynth-plugin-vsakarin-av1an-git \
+        vapoursynth-plugin-rife-ncnn-vulkan
+```
+
+And manually install [adjust](https://github.com/f0e/Vapoursynth-adjust/releases/latest).
+
+Then place the `blur` binary anywhere on your PATH and make sure `vspipe` and `ffmpeg` are also on your PATH.
+
+---
+
+## Run on Linux (Docker runtime image)
+
+You can run `blur-cli` as a self-contained Docker container — no need to extract the bundle to disk.
+
+### Requirements
+
+- [Docker](https://docs.docker.com/engine/install/)
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (for GPU acceleration)
+
+### Step 1 — Build the images
+
+First build the CI image (skip if already done from the [build steps above](#building-on-linux)):
+
+```bash
+docker build -t blur-linux -f ci/Dockerfile .
+```
+
+Then build the lightweight runtime image on top of it:
+
+```bash
+docker build -t blur-run -f ci/Dockerfile.run .
+```
+
+### Step 2 — Run
+
+```bash
+docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
+  -v /path/to/videos:/input \
+  -v /path/to/output:/output \
+  blur-run \
+  -i /input/video.mp4 \
+  -o /output/result.mp4
+```
+
+With a custom config file:
+
+```bash
+docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
+  -v /path/to/videos:/input \
+  -v /path/to/output:/output \
+  -v /path/to/config:/config \
+  blur-run \
+  -i /input/video.mp4 \
+  -o /output/result.mp4 \
+  -c /config/blur.cfg
+```
+
+All `blur-cli` flags are supported — run `docker run --rm blur-run --help` for the full list.
+
+---
+
+## Run on Linux (manual / AppImage)
+
+- Ensure that your build exists by running command `docker build -t blur-linux -f ci/Dockerfile . && docker run --rm -v "$(pwd):/out" blur-linux`
+- Need `libvulkan1` installed as it's needed by `rife`
+
+```
+docker run \
+  -v /path_to_/directory_blur-Linux-Release-x64/:/root/workspace \
+  -v /path_to_/directory_containing_videos/:/root/videos \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all --rm -it \
+  --workdir /root/workspace \
+  ubuntu:22.04 \
+  bash -c \
+    "apt-get update -qq && apt-get install -y -qq libvulkan1 && \
+      ./blur-cli --verbose --input /root/videos/your_video_file.mp4"
+
+```
+
+
+```
+docker run \
+  -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage/:/root/workspace \
+  -v /path_to_/directory_containing_videos/:/root/videos \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all --rm -it \
+  --workdir /root/workspace \
+  ubuntu:22.04 \
+  bash -c \
+    "apt-get update -qq && apt-get install -y -qq libvulkan1 && \
+      ./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --verbose --input /root/videos/your_video_file.mp4"
+
+```
+
+
+```
+docker run \
+  -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage_and_blur-cli.sh/:/root/workspace \
+  -v /path_to_/directory_containing_videos/:/root/videos \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all --rm -it \
+  --workdir /root/workspace \
+  ubuntu:22.04 bash -c \
+    "apt-get update -qq && apt-get install -y -qq libvulkan1 && \
+      ./blur-cli.sh --verbose --input  /root/videos/your_video_file.mp4"
+
+```
+
+```
+
+./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --input input.mp4 --output output.mp4 --config-path blur-config.cfg 
+./blur-cli.sh --input input.mp4 --output output.mp4 --config-path blur-config.cfg 
+```
 
 ---
 
