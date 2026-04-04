@@ -53,10 +53,23 @@ build_appimage "blur-cli" "/dist/blur-cli-Linux-x86_64.AppImage"
 # Create no-fuse launcher wrappers. APPIMAGE_EXTRACT_AND_RUN must be set
 # before the AppImage ELF runtime starts, so it cannot go inside AppRun.
 for name in blur blur-cli; do
-    cat > "/dist/${name}.sh" <<EOF
+    cat > "/dist/${name}.sh" <<'EOF'
 #!/bin/sh
-APPIMAGE_EXTRACT_AND_RUN=1 "\$(dirname "\$(readlink -f "\$0")")/${name}-Linux-x86_64.AppImage" "\$@"
+# Set up NVIDIA EGL-based Vulkan ICD for headless containers.
+# NVIDIA_DRIVER_CAPABILITIES=all mounts libEGL_nvidia.so.0 but not nvidia_icd.json.
+# libvulkan1 must already be installed on the host/container.
+if [ -f /usr/lib/x86_64-linux-gnu/libEGL_nvidia.so.0 ] && \
+   [ ! -f /usr/share/vulkan/icd.d/nvidia_icd.json ]; then
+    mkdir -p /usr/share/vulkan/icd.d
+    printf '{"file_format_version":"1.0.0","ICD":{"library_path":"libEGL_nvidia.so.0","api_version":"1.3.242"}}\n' \
+        > /usr/share/vulkan/icd.d/nvidia_icd.json
+fi
+if [ -f /usr/share/vulkan/icd.d/nvidia_icd.json ]; then
+    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+fi
+APPIMAGE_EXTRACT_AND_RUN=1 "$(dirname "$(readlink -f "$0")")/APPIMAGE_NAME" "$@"
 EOF
+    sed -i "s/APPIMAGE_NAME/${name}-Linux-x86_64.AppImage/" "/dist/${name}.sh"
     chmod +x "/dist/${name}.sh"
 done
 

@@ -361,7 +361,7 @@ docker build -t blur-run -f ci/Dockerfile.run .
 ### Step 2 — Run
 
 ```bash
-docker run --rm --gpus all \
+docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
   -v /path/to/videos:/input \
   -v /path/to/output:/output \
   blur-run \
@@ -372,7 +372,7 @@ docker run --rm --gpus all \
 With a custom config file:
 
 ```bash
-docker run --rm --gpus all \
+docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
   -v /path/to/videos:/input \
   -v /path/to/output:/output \
   -v /path/to/config:/config \
@@ -388,17 +388,19 @@ All `blur-cli` flags are supported — run `docker run --rm blur-run --help` for
 
 ## Run on Linux (manual / AppImage)
 
-Ensure that your build exists by running command `docker build -t blur-linux -f ci/Dockerfile . && docker run --rm -v "$(pwd):/out" blur-linux`
+- Ensure that your build exists by running command `docker build -t blur-linux -f ci/Dockerfile . && docker run --rm -v "$(pwd):/out" blur-linux`
+- Need `libvulkan1` installed as it's needed by `rife`
 
 ```
 docker run \
   -v /path_to_/directory_blur-Linux-Release-x64/:/root/workspace \
   -v /path_to_/directory_containing_videos/:/root/videos \
-  --gpus=all --rm -it \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all --rm -it \
   --workdir /root/workspace \
-  ubuntu:24.04 \
+  ubuntu:22.04 \
   bash -c \
-    "./blur-cli --verbose --input /root/videos/your_video_file.mp4"
+    "apt-get update -qq && apt-get install -y -qq libvulkan1 && \
+      ./blur-cli --verbose --input /root/videos/your_video_file.mp4"
 
 ```
 
@@ -407,11 +409,12 @@ docker run \
 docker run \
   -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage/:/root/workspace \
   -v /path_to_/directory_containing_videos/:/root/videos \
-  --gpus=all --rm -it \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all --rm -it \
   --workdir /root/workspace \
-  ubuntu:24.04 \
+  ubuntu:22.04 \
   bash -c \
-    "./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --verbose --input /root/videos/your_video_file.mp4"
+    "apt-get update -qq && apt-get install -y -qq libvulkan1 && \
+      ./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --verbose --input /root/videos/your_video_file.mp4"
 
 ```
 
@@ -420,10 +423,11 @@ docker run \
 docker run \
   -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage_and_blur-cli.sh/:/root/workspace \
   -v /path_to_/directory_containing_videos/:/root/videos \
-  --gpus=all --rm -it \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all --rm -it \
   --workdir /root/workspace \
-  ubuntu:24.04 bash -c \
-    "./blur-cli.sh --verbose --input  /root/videos/your_video_file.mp4"
+  ubuntu:22.04 bash -c \
+    "apt-get update -qq && apt-get install -y -qq libvulkan1 && \
+      ./blur-cli.sh --verbose --input  /root/videos/your_video_file.mp4"
 
 ```
 
