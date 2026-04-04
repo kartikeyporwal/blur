@@ -7,7 +7,7 @@
 #include "config_app.h"
 #include "config_presets.h"
 
-Blur::InitialisationResponse Blur::initialise(bool _verbose, bool _using_preview) {
+tl::expected<void, std::string> Blur::initialise(bool _verbose, bool _using_preview) {
 	resources_path = u::get_resources_path();
 	settings_path = u::get_settings_path();
 
@@ -36,9 +36,9 @@ Blur::InitialisationResponse Blur::initialise(bool _verbose, bool _using_preview
 
 	if (used_installer) {
 #if defined(_WIN32)
-		vspipe_path = (blur.resources_path / "lib\\vapoursynth\\vspipe.exe").wstring();
-		ffmpeg_path = (blur.resources_path / "lib\\ffmpeg\\ffmpeg.exe").wstring();
-		ffprobe_path = (blur.resources_path / "lib\\ffmpeg\\ffprobe.exe").wstring();
+		vspipe_path = (blur.resources_path / "lib\\vapoursynth\\vspipe.exe");
+		ffmpeg_path = (blur.resources_path / "lib\\ffmpeg\\ffmpeg.exe");
+		ffprobe_path = (blur.resources_path / "lib\\ffmpeg\\ffprobe.exe");
 #elif defined(__linux__)
 		vspipe_path = (blur.resources_path / "vapoursynth/vspipe").wstring();
 		ffmpeg_path = (blur.resources_path / "ffmpeg/ffmpeg").wstring();
@@ -46,80 +46,64 @@ Blur::InitialisationResponse Blur::initialise(bool _verbose, bool _using_preview
 
 
 #elif defined(__APPLE__)
-		vspipe_path = (blur.resources_path / "vapoursynth/vspipe").wstring();
-		ffmpeg_path = (blur.resources_path / "ffmpeg/ffmpeg").wstring();
-		ffprobe_path = (blur.resources_path / "ffmpeg/ffprobe").wstring();
+		vspipe_path = (blur.resources_path / "vapoursynth/vspipe");
+		ffmpeg_path = (blur.resources_path / "ffmpeg/ffmpeg");
+		ffprobe_path = (blur.resources_path / "ffmpeg/ffprobe");
 #endif
 
 		const static std::string manual_troubleshooting_info = "Try redownloading the latest installer.";
 
 		// didn't use installer, check if dependencies are installed
 		if (!std::filesystem::exists(ffmpeg_path)) {
-			return {
-				.success = false,
-				.error_message = "FFmpeg could not be found. " + manual_troubleshooting_info,
-			};
+			return tl::unexpected("FFmpeg could not be found. " + manual_troubleshooting_info);
 		}
 
 		if (!std::filesystem::exists(ffprobe_path)) {
-			return {
-				.success = false,
-				.error_message = "FFprobe could not be found. " + manual_troubleshooting_info,
-			};
+			return tl::unexpected("FFprobe could not be found. " + manual_troubleshooting_info);
 		}
 
 		if (!std::filesystem::exists(vspipe_path)) {
-			return {
-				.success = false,
-				.error_message = "VapourSynth could not be found. " + manual_troubleshooting_info,
-			};
+			return tl::unexpected("VapourSynth could not be found. " + manual_troubleshooting_info);
 		}
 	}
 	else {
 		const static std::string manual_troubleshooting_info =
-			"If you’re not sure what that means, try using the installer.";
+			"If you're not sure what that means, try using the installer.";
 
 		// didn't use installer, check if dependencies are installed
 		if (auto _ffmpeg_path = u::get_program_path("ffmpeg")) {
 			ffmpeg_path = *_ffmpeg_path;
 		}
 		else {
-			return {
-				.success = false,
-				.error_message = "FFmpeg could not be found. " + manual_troubleshooting_info,
-			};
+			return tl::unexpected("FFmpeg could not be found. " + manual_troubleshooting_info);
 		}
 
 		if (auto _ffprobe_path = u::get_program_path("ffprobe")) {
 			ffprobe_path = *_ffprobe_path;
 		}
 		else {
-			return {
-				.success = false,
-				.error_message = "FFprobe could not be found. " + manual_troubleshooting_info,
-			};
+			return tl::unexpected("FFprobe could not be found. " + manual_troubleshooting_info);
 		}
 
 		if (auto _vspipe_path = u::get_program_path("vspipe")) {
 			vspipe_path = *_vspipe_path;
 		}
 		else {
-			return {
-				.success = false,
-				.error_message = "VapourSynth could not be found. " + manual_troubleshooting_info,
-			};
+			return tl::unexpected("VapourSynth could not be found. " + manual_troubleshooting_info);
 		}
 	}
 
 	verbose = _verbose;
 	using_preview = _using_preview;
 
-	int res = std::atexit([] {
-		rendering.stop_rendering();
+	setup_signal_handlers();
+
+	int atexit_res = std::atexit([] {
+		blur.in_atexit = true; // spdlog's already shut down or smth. Cancer
 		blur.cleanup();
 	});
 
-	if (res != 0)
+	if (atexit_res != 0)
 		DEBUG_LOG("failed to register atexit");
 
 	initialise_base_temp_path();
@@ -130,9 +114,7 @@ Blur::InitialisationResponse Blur::initialise(bool _verbose, bool _using_preview
 		initialise_rife_gpus();
 	}).detach();
 
-	return {
-		.success = true,
-	};
+	return {};
 }
 
 void Blur::initialise_base_temp_path() {
@@ -149,25 +131,39 @@ void Blur::initialise_base_temp_path() {
 	}
 }
 
-void Blur::cleanup() const {
-	u::log("removing temp path {}", temp_path.string());
+void Blur::cleanup() {
+	// prevent multiple cleanup calls
+	if (cleanup_performed.exchange(true))
+		return;
+
+	u::log("Starting application cleanup...");
+
+	exiting = true;
+
+	// stop renders
+	rendering.stop_renders_and_wait();
+
+	// remove temp dirs
+	DEBUG_LOG("removing temp path {}", temp_path);
 	std::filesystem::remove_all(temp_path); // todo: is this unsafe lol
+
+	u::log("Application cleanup completed");
 }
 
 std::optional<std::filesystem::path> Blur::create_temp_path(const std::string& folder_name) const {
 	auto temp_dir = temp_path / folder_name;
 
 	if (std::filesystem::exists(temp_dir)) {
-		u::log("temp dir {} already exists, clearing and re-creating", temp_path.string());
+		u::log("temp dir {} already exists, clearing and re-creating", temp_path);
 		remove_temp_path(temp_dir);
 	}
 
-	u::log("trying to make temp dir {}", temp_dir.string());
+	u::log("trying to make temp dir {}", temp_dir);
 
 	if (!std::filesystem::create_directory(temp_dir))
 		return {};
 
-	u::log("created temp dir {}", temp_dir.string());
+	u::log("created temp dir {}", temp_dir);
 
 	return temp_dir;
 }
@@ -181,7 +177,7 @@ bool Blur::remove_temp_path(const std::filesystem::path& temp_path) {
 
 	try {
 		std::filesystem::remove_all(temp_path);
-		u::log("removed temp dir {}", temp_path.string());
+		u::log("removed temp dir {}", temp_path);
 
 		return true;
 	}
@@ -191,10 +187,10 @@ bool Blur::remove_temp_path(const std::filesystem::path& temp_path) {
 	}
 }
 
-updates::UpdateCheckRes Blur::check_updates() {
+tl::expected<updates::UpdateCheckRes, std::string> Blur::check_updates() {
 	auto config = config_app::get_app_config();
 	if (!config.check_updates)
-		return { .success = false };
+		return updates::UpdateCheckRes{};
 
 	return updates::is_latest_version(config.check_beta);
 }
@@ -220,4 +216,22 @@ void Blur::initialise_rife_gpus() {
 	);
 
 	initialised_rife_gpus = true;
+}
+
+void cleanup_handler(int signal) {
+	// Restore default handler immediately to prevent re-entry
+	std::signal(signal, SIG_DFL);
+
+	blur.cleanup();
+
+	// Re-raise the signal for proper exit code
+	std::raise(signal);
+}
+
+void Blur::setup_signal_handlers() {
+	std::signal(SIGINT, cleanup_handler);
+	std::signal(SIGTERM, cleanup_handler);
+#ifndef _WIN32
+	std::signal(SIGHUP, cleanup_handler);
+#endif
 }

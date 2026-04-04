@@ -16,12 +16,15 @@ void ui::render_bar(const Container& container, const AnimatedElement& element) 
 		gfx::Color adjusted_text_color = (*bar_data.text_color).adjust_alpha(anim);
 
 		gfx::Point text_pos = element.element->rect.origin();
+		text_pos.y += element.element->rect.h / 2 - 1; // -1 for optical alignment or whatever
 
 		text_size = (*bar_data.font)->calc_size(*bar_data.bar_text);
 
 		text_pos.x = element.element->rect.x2();
 
-		render::text(text_pos, adjusted_text_color, *bar_data.bar_text, **bar_data.font, FONT_RIGHT_ALIGN);
+		render::text(
+			text_pos, adjusted_text_color, *bar_data.bar_text, **bar_data.font, FONT_RIGHT_ALIGN | FONT_CENTERED_Y
+		);
 	}
 
 	gfx::Rect bar_rect = element.element->rect;

@@ -6,6 +6,8 @@ import warnings
 from typing import Iterable
 from numbers import Number
 
+import blur.utils as u
+
 
 class InvalidCustomWeighting(Exception):
     def __init__(self, message="Invalid custom weighting function!"):
@@ -132,3 +134,59 @@ def divide(frames: int, weights: list[float]) -> list[float]:
     indices = scale_range(frames, 0, len(weights) - 0.1)
     stretched = [weights[int(idx)] for idx in indices]
     return normalize(stretched)
+
+
+def parse(
+    blur_frames: int,
+    weighting_type: str,
+    gaussian_std_dev: float,
+    gaussian_mean: float,
+    gaussian_bound: str,
+):
+    match weighting_type:
+        case "equal":
+            return equal(blur_frames)
+
+        case "ascending":
+            return ascending(blur_frames)
+
+        case "descending":
+            return descending(blur_frames)
+
+        case "pyramid":
+            return pyramid(blur_frames)
+
+        case "gaussian":
+            return gaussian(
+                blur_frames,
+                standard_deviation=gaussian_std_dev,
+                mean=gaussian_mean,
+                bound=gaussian_bound,
+            )
+
+        case "gaussian_reverse":
+            return gaussian_reverse(
+                blur_frames,
+                standard_deviation=gaussian_std_dev,
+                mean=gaussian_mean,
+                bound=gaussian_bound,
+            )
+
+        case "gaussian_sym":
+            return gaussian_sym(
+                blur_frames,
+                standard_deviation=gaussian_std_dev,
+                bound=gaussian_bound,
+            )
+
+        case "vegas":
+            return vegas(blur_frames)
+
+        case _:
+            try:
+                weights = [int(x) for x in weighting_type.split(",")]
+                return divide(blur_frames, weights)
+            except (ValueError, AttributeError):
+                raise u.BlurException(
+                    f"Invalid blur weighting type: {weighting_type}. Valid options are: 'equal', 'gaussian_sym', 'vegas', 'pyramid', 'gaussian', 'ascending', 'descending', 'gaussian_reverse', or a comma-separated list of custom weights (e.g. '1, 2, 3, 2, 1')."
+                )

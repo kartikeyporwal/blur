@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config_blur.h"
+#include "config_app.h"
 #include "rendering.h"
 
 class FrameRender {
@@ -21,25 +22,19 @@ public:
 		m_to_kill = true;
 	}
 
-	struct DoRenderResult {
-		bool success;
-		std::string error_message;
-	};
-
-	DoRenderResult do_render(RenderCommands render_commands, const BlurSettings& settings);
-
-	struct RenderResponse {
-		bool success;
-		std::filesystem::path output_path;
-		std::string error_message;
-	};
+	tl::expected<void, std::string> do_render(RenderCommands render_commands, const BlurSettings& settings);
 
 	bool create_temp_path();
 	bool remove_temp_path();
 
-	RenderResponse render(const std::filesystem::path& input_path, const BlurSettings& settings);
+	tl::expected<std::filesystem::path, std::string> render(
+		const std::filesystem::path& input_path, const BlurSettings& settings, const GlobalAppSettings& app_settings
+	);
 
-	static RenderCommandsResult build_render_commands(
-		const std::filesystem::path& input_path, const std::filesystem::path& output_path, const BlurSettings& settings
+	static tl::expected<RenderCommands, std::string> build_render_commands(
+		const std::filesystem::path& input_path,
+		const std::filesystem::path& output_path,
+		const BlurSettings& settings,
+		const GlobalAppSettings& app_settings
 	);
 };

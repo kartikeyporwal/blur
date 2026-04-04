@@ -4,6 +4,9 @@
 #include "../../ui/ui.h"
 #include "../../render/render.h"
 
+#include "common/config_presets.h"
+#include "common/config_app.h"
+
 namespace configs = gui::components::configs;
 
 void configs::set_interpolated_fps() {
@@ -30,7 +33,7 @@ void configs::set_interpolated_fps() {
 	}
 }
 
-void configs::options(ui::Container& container, BlurSettings& settings) {
+void configs::options(ui::Container& container) {
 	static const gfx::Color section_color = gfx::Color::white(renderer::MUTED_SHADE);
 
 	bool first_section = true;
@@ -74,7 +77,7 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 			&settings.blur_amount,
 			"blur amount: {:.2f}",
 			&settings.blur_output_fps,
-			settings.blur_amount_tied_to_fps,
+			app_settings.blur_amount_tied_to_fps,
 			"fps",
 			fonts::dejavu
 		);
@@ -164,7 +167,6 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 			);
 		}
 
-#ifndef __APPLE__ // see comment
 		ui::add_dropdown(
 			"interpolation method dropdown",
 			container,
@@ -176,10 +178,8 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 			settings.interpolation_method,
 			fonts::dejavu
 		);
-#endif
 	}
 
-#ifndef __APPLE__ // see above
 	/*
 	    Pre-interpolation
 	*/
@@ -229,7 +229,6 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 			}
 		}
 	}
-#endif
 
 	/*
 	    Deduplication
@@ -243,11 +242,11 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 			"deduplicate method dropdown",
 			container,
 			"deduplicate method",
-			{ "svp",
-#ifndef __APPLE__ // rife issue again
-		      "rife",
-#endif
-		      "old" },
+			{
+				"svp",
+				"rife",
+				"old",
+			},
 			settings.deduplicate_method,
 			fonts::dejavu
 		);
@@ -261,30 +260,36 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 	ui::add_dropdown(
 		"codec dropdown",
 		container,
-		std::format("encode preset ({})", settings.gpu_encoding ? "gpu: " + settings.gpu_type : "cpu"),
-		u::get_supported_presets(settings.gpu_encoding, settings.gpu_type),
+		std::format("encode preset ({})", settings.gpu_encoding ? "gpu: " + app_settings.gpu_type : "cpu"),
+		u::get_supported_presets(settings.gpu_encoding, app_settings.gpu_type),
 		settings.encode_preset,
 		fonts::dejavu
 	);
 
 	if (settings.advanced.ffmpeg_override.empty()) {
-		int min_quality = 0;
-		int max_quality = 51;
-		std::string quality_label = "quality: {}";
+		std::vector<std::string> preset_args = config_presets::get_preset_params(
+			settings.gpu_encoding ? app_settings.gpu_type : "cpu",
+			u::to_lower(settings.encode_preset.empty() ? "h264" : settings.encode_preset),
+			settings.quality
+		);
 
-		if (settings.encode_preset == "prores" && settings.gpu_type == "mac") {
-			min_quality = 0; // proxy
-			max_quality = 3; // hq
-			quality_label = "quality: {} (0:proxy, 1:lt, 2:standard, 3:hq)";
-		}
-		else if (settings.encode_preset == "av1") {
-			max_quality = 63;
-		}
+		auto codec = config_presets::extract_codec_from_args(preset_args);
+		auto quality_config = config_presets::get_quality_config(codec ? *codec : "");
 
-		settings.quality = std::clamp(settings.quality, min_quality, max_quality);
+		// // clamp current quality to new range
+		// settings.quality = std::clamp(settings.quality, quality_config.min_quality, quality_config.max_quality);
 
 		ui::add_slider(
-			"quality", container, min_quality, max_quality, &settings.quality, quality_label, fonts::dejavu, {}, 0.f
+			"quality",
+			container,
+			quality_config.min_quality,
+			quality_config.max_quality,
+			&settings.quality,
+			"quality: {}",
+			fonts::dejavu,
+			{},
+			0.f,
+			quality_config.quality_label
 		);
 	}
 	else {
@@ -304,6 +309,8 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 	);
 
 	ui::add_checkbox("copy dates checkbox", container, "copy dates", settings.copy_dates, fonts::dejavu);
+
+	ui::add_text_input("output path input", container, app_settings.output_prefix, "output path", fonts::dejavu);
 
 	/*
 	    GPU Acceleration
@@ -327,7 +334,7 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 					container,
 					"gpu encoding device",
 					gpu_types,
-					settings.gpu_type,
+					app_settings.gpu_type,
 					fonts::dejavu
 				);
 			}
@@ -343,18 +350,17 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 		);
 	}
 
-#ifndef __APPLE__ // rife mac issue todo:
 	static std::string rife_gpu;
 
-	if (settings.rife_gpu_index == -1) {
+	if (app_settings.rife_gpu_index == -1) {
 		rife_gpu = "default - will use first available";
 	}
 	else {
-		if (blur.initialised_rife_gpus) {
-			rife_gpu = blur.rife_gpus.at(settings.rife_gpu_index);
+		if (blur.initialised_rife_gpus && !blur.rife_gpus.empty()) {
+			rife_gpu = blur.rife_gpus.at(app_settings.rife_gpu_index);
 		}
 		else {
-			rife_gpu = std::format("gpu {}", settings.rife_gpu_index);
+			rife_gpu = std::format("gpu {}", app_settings.rife_gpu_index);
 		}
 	}
 
@@ -368,12 +374,11 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 		[&](std::string* new_gpu_name) {
 			for (const auto& [gpu_index, gpu_name] : blur.rife_gpus) {
 				if (gpu_name == *new_gpu_name) {
-					settings.rife_gpu_index = gpu_index;
+					app_settings.rife_gpu_index = gpu_index;
 				}
 			}
 		}
 	);
-#endif
 
 	/*
 	    Timescale
@@ -564,9 +569,7 @@ void configs::options(ui::Container& container, BlurSettings& settings) {
 			fonts::dejavu
 		);
 
-#ifndef __APPLE__ // rife issue again
 		ui::add_text_input("rife model", container, settings.advanced.rife_model, "rife model", fonts::dejavu);
-#endif
 
 		/*
 		    Advanced Blur
@@ -648,9 +651,14 @@ void configs::parse_interp() {
 void configs::save_config() {
 	config_blur::create(config_blur::get_global_config_path(), settings);
 	current_global_settings = settings;
+
+	config_app::create(config_app::get_app_config_path(), app_settings);
+	current_app_settings = app_settings;
 };
 
 void configs::on_load() {
 	current_global_settings = settings;
 	parse_interp();
+
+	current_app_settings = app_settings;
 };

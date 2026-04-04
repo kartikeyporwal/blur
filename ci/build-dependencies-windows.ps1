@@ -137,7 +137,7 @@ $plugins = @(
     },
     @{
         Name = "VapourSynth-RIFE-ncnn-Vulkan";
-        Url = "https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/releases/download/r9_mod_v32/librife_windows_x86-64.dll";
+        Url = "https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/releases/download/r9_mod_v33/librife_windows_x86-64.dll";
         IsDirectDll = $true;
     },,
     @{
@@ -175,18 +175,18 @@ foreach ($plugin in $plugins) {
 }
 
 # Download and process FFmpeg
-$ffmpegUrl = "https://github.com/GyanD/codexffmpeg/releases/download/2025-04-21-git-9e1162bdf1/ffmpeg-2025-04-21-git-9e1162bdf1-essentials_build.7z"
+$ffmpegUrl = "https://github.com/GyanD/codexffmpeg/releases/download/2025-08-14-git-cdbb5f1b93/ffmpeg-2025-08-14-git-cdbb5f1b93-full_build.7z"
 $ffmpegArchive = Join-Path $ffmpegDir "ffmpeg-git-essentials.7z"
 Download-File -Url $ffmpegUrl -OutFile $ffmpegArchive
 Extract-Files -ArchivePath $ffmpegArchive -FilePatterns @(
-    "ffmpeg-2025-04-21-git-9e1162bdf1-essentials_build\bin\ffmpeg.exe",
-    "ffmpeg-2025-04-21-git-9e1162bdf1-essentials_build\bin\ffprobe.exe"
+    "ffmpeg-2025-08-14-git-cdbb5f1b93-full_build\\bin\ffmpeg.exe",
+    "ffmpeg-2025-08-14-git-cdbb5f1b93-full_build\\bin\ffprobe.exe"
 ) -DestinationPath $ffmpegDir
 
 # Define model downloads
 $modelDownloads = @(
     @{
-        BaseUrl = "https://raw.githubusercontent.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/a2579e656dac7909a66e7da84578a2f80ccba41c/models/rife-v4.26_ensembleFalse";
+        BaseUrl = "https://raw.githubusercontent.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/c3ec6aabc07c8fa37a4f58d7fed9e2ad1fc1b13f/models/rife-v4.26_ensembleFalse";
         ModelName = "rife-v4.26_ensembleFalse";
         FileList = @("flownet.bin", "flownet.param");
     }

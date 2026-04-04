@@ -17,7 +17,7 @@
 
 #define DEBUG_RENDER 0
 
-bool gui::renderer::redraw_window(bool rendered_last, bool force_render) {
+bool gui::renderer::redraw_window(bool rendered_last, bool want_to_render) {
 	keys::on_frame_start();
 	ui::on_frame_start();
 	sdl::on_frame_start();
@@ -60,10 +60,11 @@ bool gui::renderer::redraw_window(bool rendered_last, bool force_render) {
 
 	const gfx::Rect rect(gfx::Point(0, 0), render::window_size);
 
-	static float bg_overlay_shade = 0.f;
-	float last_fill_shade = bg_overlay_shade;
-	bg_overlay_shade = u::lerp(bg_overlay_shade, gui::dragging ? 30.f : 0.f, 25.f * delta_time);
-	force_render |= bg_overlay_shade != last_fill_shade;
+	static float bg_drop_overlay_percent = 0.f;
+	static float bg_last_percent = bg_drop_overlay_percent;
+	bg_drop_overlay_percent = u::lerp(bg_drop_overlay_percent, gui::dragging ? 1.f : 0.f, 25.f * delta_time);
+	want_to_render |= bg_drop_overlay_percent != bg_last_percent;
+	bg_last_percent = bg_drop_overlay_percent;
 
 	gfx::Rect nav_container_rect = rect;
 	nav_container_rect.h = 70;
@@ -137,11 +138,13 @@ bool gui::renderer::redraw_window(bool rendered_last, bool force_render) {
 
 	switch (screen) {
 		case Screens::MAIN: {
-			components::configs::loaded_config = false;
+			if (components::configs::should_load_config) {
+				components::configs::loaded_config = false;
+			}
 
 			components::main::home_screen(main_container, delta_time);
 
-			if (initialisation_res && initialisation_res->success) {
+			if (initialisation_res) {
 				auto current_render = rendering.get_current_render();
 				if (current_render) {
 					ui::add_button(
@@ -180,6 +183,8 @@ bool gui::renderer::redraw_window(bool rendered_last, bool force_render) {
 			break;
 		}
 		case Screens::CONFIG: {
+			components::configs::should_load_config = true;
+
 			ui::set_next_same_line(nav_container);
 			ui::add_button("back button", nav_container, "Back", fonts::dejavu, [] {
 				screen = Screens::MAIN;
@@ -206,7 +211,6 @@ bool gui::renderer::redraw_window(bool rendered_last, bool force_render) {
 
 	ui::center_elements_in_container(nav_container);
 
-	bool want_to_render = false;
 	want_to_render |= ui::update_container_frame(notification_container, delta_time);
 	want_to_render |= ui::update_container_frame(nav_container, delta_time);
 
@@ -217,7 +221,7 @@ bool gui::renderer::redraw_window(bool rendered_last, bool force_render) {
 	want_to_render |= ui::update_container_frame(option_information_container, delta_time);
 	ui::on_update_frame_end();
 
-	if (!want_to_render && !force_render)
+	if (!want_to_render)
 		// note: DONT RENDER ANYTHING ABOVE HERE!!! todo: render queue?
 		return false;
 
@@ -269,8 +273,8 @@ bool gui::renderer::redraw_window(bool rendered_last, bool force_render) {
 		ui::render_container(notification_container);
 
 		// file drop overlay
-		if ((int)bg_overlay_shade > 0)
-			render::rect_filled(rect, gfx::Color::white(bg_overlay_shade));
+		if (bg_drop_overlay_percent > 0.f)
+			render::rect_filled(rect, gfx::Color::white(bg_drop_overlay_percent * 30.f));
 
 #if DEBUG_RENDER
 		if (fps != -1.f) {
@@ -285,41 +289,16 @@ bool gui::renderer::redraw_window(bool rendered_last, bool force_render) {
 
 	ui::on_frame_end();
 
-	return want_to_render;
+	return true;
 }
 
-void gui::renderer::on_render_finished(Render* render, const RenderResult& result) {
-	if (result.stopped) {
+void gui::renderer::on_render_finished(Render* render, const tl::expected<RenderResult, std::string>& result) {
+	if (!result) {
 		gui::components::notifications::add(
-			std::format("Render '{}' stopped", u::tostring(render->get_video_name())), ui::NotificationType::INFO
-		);
-	}
-	else if (result.success) {
-		auto output_path = render->get_output_video_path();
-
-		gui::components::notifications::add(
-			std::format("Render '{}' completed", u::tostring(render->get_video_name())),
-			ui::NotificationType::SUCCESS,
-			[output_path](const std::string& id) {
-				// Convert path to a file:// URL for SDL_OpenURL
-				std::string file_url = "file://" + output_path.string();
-				if (!SDL_OpenURL(file_url.c_str())) {
-					u::log_error("Failed to open output folder: {}", SDL_GetError());
-				}
-			}
-		);
-
-		auto app_config = config_app::get_app_config();
-		if (app_config.render_success_notifications) {
-			desktop_notification::show("Blur render complete", "Render completed successfully");
-		}
-	}
-	else {
-		gui::components::notifications::add(
-			std::format("Render '{}' failed. Click to copy error message", u::tostring(render->get_video_name())),
+			std::format("Render '{}' failed. Click to copy error message", render->get_video_name()),
 			ui::NotificationType::NOTIF_ERROR,
 			[result](const std::string& id) {
-				SDL_SetClipboardText(result.error_message.c_str());
+				SDL_SetClipboardText(result.error().c_str());
 
 				gui::components::notifications::close(id);
 
@@ -335,7 +314,33 @@ void gui::renderer::on_render_finished(Render* render, const RenderResult& resul
 
 		auto app_config = config_app::get_app_config();
 		if (app_config.render_failure_notifications) {
-			desktop_notification::show("Blur render failed", u::truncate_with_ellipsis(result.error_message, 100));
+			desktop_notification::show("Blur render failed", u::truncate_with_ellipsis(result.error(), 100));
 		}
+		return;
+	}
+
+	if (result->stopped) {
+		gui::components::notifications::add(
+			std::format("Render '{}' stopped", render->get_video_name()), ui::NotificationType::INFO
+		);
+		return;
+	}
+
+	auto output_path = render->get_output_video_path();
+
+	gui::components::notifications::add(
+		std::format("Render '{}' completed", render->get_video_name()),
+		ui::NotificationType::SUCCESS,
+		[output_path](const std::string& id) {
+			std::string file_url = std::format("file://{}", output_path);
+			if (!SDL_OpenURL(file_url.c_str())) {
+				u::log_error("Failed to open output folder: {}", SDL_GetError());
+			}
+		}
+	);
+
+	auto app_config = config_app::get_app_config();
+	if (app_config.render_success_notifications) {
+		desktop_notification::show("Blur render complete", "Render completed successfully");
 	}
 }

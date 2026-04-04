@@ -6,9 +6,11 @@
   <img src="https://github.com/user-attachments/assets/e8b749dc-9232-4e45-93b4-8df2e3854ffb" width="30%" />
 </p>
 
+[![Downloads](https://img.shields.io/github/downloads/f0e/blur/total?label=Downloads)](https://github.com/f0e/blur/releases/latest) [![Discord](https://img.shields.io/discord/1392389164153962640?style=flat&label=Discord)](https://discord.gg/B5BK9GMN87)
+
 Blur is a native desktop application made for easily and efficiently adding motion blur to videos through frame blending, with the ability to utilise frame interpolation and more.
 
-[YouTube showcase](https://www.youtube.com/watch?v=HicPaXNxtUw)
+Join the [Discord](https://discord.gg/B5BK9GMN87) to share your configs, render tests and ask the community for help.
 
 ## Download
 
@@ -16,11 +18,15 @@ Blur is a native desktop application made for easily and efficiently adding moti
 - [macOS installer](https://github.com/f0e/blur/releases/latest/download/blur-macOS-Release-arm64.dmg)
 - [Linux (requires manual installation of dependencies)](https://github.com/f0e/blur/releases/latest/download/blur-Linux-Release-x64.tar.gz)
 
+### Beta releases
+
+I often release beta versions with new functionality before I think they're stable enough for a proper release. To test these releases, [visit the Releases tab of the repo.](https://github.com/f0e/blur/releases) To receive beta update notifications you can enable `include beta updates` in your `blur.cfg` found in your config folder. Any feedback or issue reporting on these releases is greatly appreciated :)
+
 ### macOS notes
 
-> After opening on Mac for the first time you'll get a 'Blur is damaged and can't be opened.' error. To fix this, run `xattr -dr com.apple.quarantine /Applications/blur.app` to unquarantine it.\*
+> After opening on Mac for the first time you'll get a 'Blur is damaged and can't be opened.' error. To fix this, run `xattr -dr com.apple.quarantine /Applications/blur.app` in Terminal to unquarantine it.\*
 
-> Using SVP for interpolation requires that [SVP Manager](https://www.svp-team.com/get/) be running, or you'll get a red border around videos. This is because the older, free version of SVPflow (the interpolation plugin) that's used on Windows and Linux doesn't have an ARM build unfortunately.
+> The default interpolation program on macOS is RIFE, unlike Windows and Linux. RIFE is more accurate than SVP, but quite a bit slower. The reason for this difference is because because using SVP for interpolation on macOS requires that [SVP Manager](https://www.svp-team.com/get/) be running, or you'll get a red border around videos. (This software is paid, and not affiliated with Blur)
 
 ### Linux notes
 
@@ -101,16 +107,16 @@ Blur supports rendering from frameservers. This means you can avoid having to ru
   - ascending
   - descending
   - gaussian_reverse
-  - custom weights - custom frame weights, e.g. [5, 3, 3, 2, 1]. higher numbers indicate frames being more visible when blending, lower numbers mean they are less so.
+  - custom weights - custom comma-separated frame weights, e.g. 5, 3, 3, 2, 1. higher numbers indicate frames being more visible when blending, lower numbers mean they are less so.
 
 ### interpolation
 
 - interpolate - whether or not the input video file will be interpolated to a higher fps
 - interpolated fps - if interpolate is enabled, this is the fps that the input file will be interpolated to (before blurring). can be a set fps number or a multiplier (append x to end e.g. `5x`)
 - interpolation method - method used for interpolation:
-  - Quality: rife > svp
-  - Speed: svp > rife
-  - Note: On macOS, SVP requires SVP Manager to be open or a red border will appear
+  - Quality: RIFE > svp
+  - Speed: svp > RIFE
+  - Note: On macOS, SVP requires SVP Manager to be open or a red border will appear. It provides a 30-day trial, but then costs $24.99 for a lifetime license. RIFE can always be used however, but it is slower than SVP.
 
 ### pre-interpolation
 
@@ -119,13 +125,13 @@ Blur supports rendering from frameservers. This means you can avoid having to ru
 
 ### rendering
 
-- quality - [crf](https://trac.ffmpeg.org/wiki/Encode/H.264#crf) of the output video (qp if using GPU encoding) - (0 = lossless quality, 51 = really bad)
+- quality - [crf](https://trac.ffmpeg.org/wiki/Encode/H.264#crf) of the output video (may be different if using GPU encoding) - (0 = lossless quality, 51 = really bad)
 - deduplicate - removes duplicate frames and generates new interpolated frames to take their place. fixes 'unsmooth' looking output caused by stuttering in recordings
 - deduplicate range - amount of frames beyond the current frame to look for unique frames when deduplicating. make it higher if your footage is at a lower FPS than it should be (e.g. choppy 120fps gameplay recorded at 240fps), lower it if your blurred footage starts blurring static elements such as menu screens
 - deduplicate threshold - threshold of movement that triggers deduplication. turn on debug in advanced and render a video to embed text showing the movement in each frame
 - deduplicate method - method used for deduplication:
-  - Quality: rife > svp
-  - Speed: old > svp > rife
+  - Quality: RIFE > svp
+  - Speed: old > svp > RIFE
 - preview - opens a render preview window
 - detailed filenames - adds blur settings to generated filenames
 - copy dates - copies over the modified date from the input file to the output file
@@ -205,6 +211,18 @@ The Linux build is fully automated using Docker. It compiles all dependencies (F
 
 - [Docker](https://docs.docker.com/engine/install/) (any recent version)
 - Git
+
+Alternatively, if you prefer to install dependencies manually (without Docker), you'll need:
+
+- VapourSynth
+- FFmpeg
+- VapourSynth plugins (install to your system vapoursynth plugin path or `[your blur binary directory]/vapoursynth-plugins`)
+  - [SVPflow](https://web.archive.org/web/20190322064557/http://www.svp-team.com/files/gpl/svpflow-4.2.0.142.zip)
+  - [BestSource](https://github.com/vapoursynth/bestsource) ([automated build](https://github.com/f0e/blur-plugin-builds/releases/latest))
+  - [MVTools](https://github.com/dubhater/vapoursynth-mvtools) ([automated build](https://github.com/f0e/blur-plugin-builds/releases/latest))
+  - [Akarin](https://github.com/Jaded-Encoding-Thaumaturgy/akarin-vapoursynth-plugin) ([automated build](https://github.com/f0e/blur-plugin-builds/releases/latest))
+  - [RIFE-ncnn-Vulkan](https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/releases/latest)
+  - [Adjust](https://github.com/f0e/Vapoursynth-adjust/releases/latest)
 
 ### Step 1 — Clone the repository
 
@@ -343,7 +361,7 @@ docker build -t blur-run -f ci/Dockerfile.run .
 ### Step 2 — Run
 
 ```bash
-docker run --rm --gpus all \
+docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
   -v /path/to/videos:/input \
   -v /path/to/output:/output \
   blur-run \
@@ -354,7 +372,7 @@ docker run --rm --gpus all \
 With a custom config file:
 
 ```bash
-docker run --rm --gpus all \
+docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
   -v /path/to/videos:/input \
   -v /path/to/output:/output \
   -v /path/to/config:/config \
@@ -370,17 +388,19 @@ All `blur-cli` flags are supported — run `docker run --rm blur-run --help` for
 
 ## Run on Linux (manual / AppImage)
 
-Ensure that your build exists by running command `docker build -t blur-linux -f ci/Dockerfile . && docker run --rm -v "$(pwd):/out" blur-linux`
+- Ensure that your build exists by running command `docker build -t blur-linux -f ci/Dockerfile . && docker run --rm -v "$(pwd):/out" blur-linux`
+- Need `libvulkan1` installed as it's needed by `rife`
 
 ```
 docker run \
   -v /path_to_/directory_blur-Linux-Release-x64/:/root/workspace \
   -v /path_to_/directory_containing_videos/:/root/videos \
-  --gpus=all --rm -it \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all --rm -it \
   --workdir /root/workspace \
-  ubuntu:24.04 \
+  ubuntu:22.04 \
   bash -c \
-    "./blur-cli --verbose --input /root/videos/your_video_file.mp4"
+    "apt-get update -qq && apt-get install -y -qq libvulkan1 && \
+      ./blur-cli --verbose --input /root/videos/your_video_file.mp4"
 
 ```
 
@@ -389,11 +409,12 @@ docker run \
 docker run \
   -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage/:/root/workspace \
   -v /path_to_/directory_containing_videos/:/root/videos \
-  --gpus=all --rm -it \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all --rm -it \
   --workdir /root/workspace \
-  ubuntu:24.04 \
+  ubuntu:22.04 \
   bash -c \
-    "./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --verbose --input /root/videos/your_video_file.mp4"
+    "apt-get update -qq && apt-get install -y -qq libvulkan1 && \
+      ./blur-cli-Linux-x86_64.AppImage --appimage-extract-and-run --verbose --input /root/videos/your_video_file.mp4"
 
 ```
 
@@ -402,10 +423,11 @@ docker run \
 docker run \
   -v /path_to_/directory_containing_blur-cli-Linux-x86_64.AppImage_and_blur-cli.sh/:/root/workspace \
   -v /path_to_/directory_containing_videos/:/root/videos \
-  --gpus=all --rm -it \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all --rm -it \
   --workdir /root/workspace \
-  ubuntu:24.04 bash -c \
-    "./blur-cli.sh --verbose --input  /root/videos/your_video_file.mp4"
+  ubuntu:22.04 bash -c \
+    "apt-get update -qq && apt-get install -y -qq libvulkan1 && \
+      ./blur-cli.sh --verbose --input  /root/videos/your_video_file.mp4"
 
 ```
 

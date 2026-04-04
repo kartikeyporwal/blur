@@ -62,7 +62,6 @@ RUN pip3 install jinja2 docutils
 # Copy only what build-blur-linux.sh needs — package-linux.sh and build-appimage.sh
 # are copied later so changes to them don't invalidate this expensive cache layer.
 COPY ci/build-blur-linux.sh ci/build-blur-linux.sh
-COPY ci/overlay-ports/ ci/overlay-ports/
 COPY src/ src/
 COPY tests/ tests/
 COPY dependencies/ dependencies/

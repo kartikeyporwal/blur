@@ -92,10 +92,11 @@ download_model_files() {
 build() {
   local repo="$1"
   local pull_args="$2"
-  local name="$3"
-  local build_cmd="$4"
-  local lib_path="$5"
-  local out_path="$6"
+  local commit="$3"
+  local name="$4"
+  local build_cmd="$5"
+  local lib_path="$6"
+  local out_path="$7"
 
   echo "--- Building $name ---"
 
@@ -107,10 +108,22 @@ build() {
     # shellcheck disable=SC2086
     git clone $pull_args "$repo" "$name"
     cd "$name"
+
+    if [ ! -z "$commit" ]; then
+      echo "Checking out commit $commit..."
+      git checkout "$commit"
+    fi
   else
-    echo "Updating $name..."
+    echo "Repository $name already exists"
     cd "$name"
-    git pull
+    git fetch origin
+    if [ ! -z "$commit" ]; then
+      echo "Checking out commit $commit..."
+      git checkout "$commit"
+    else
+      echo "Pulling"
+      git pull
+    fi
   fi
 
   eval "$build_cmd"
@@ -155,14 +168,14 @@ download_library \
   "vapoursynth-plugins"
 
 download_library \
-  "https://github.com/f0e/Vapoursynth-adjust/releases/download/v1/libadjust.dylib" \
+  "https://github.com/f0e/Vapoursynth-adjust/releases/latest/download/libadjust.dylib" \
   "libadjust.dylib" \
   "vapoursynth-plugins"
 
 # ## RIFE ncnn Vulkan library
 # echo "Downloading RIFE ncnn Vulkan library..."
 # download_library \
-#   "https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/releases/download/r9_mod_v32/librife_macos_arm64.dylib" \
+#   "https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/releases/download/r9_mod_v33/librife_macos_arm64.dylib" \
 #   "librife_macos_arm64.dylib" \
 #   "vapoursynth-plugins"
 
@@ -197,7 +210,7 @@ $out_dir/python/bin/pip install cython
 PATH="$PWD/$out_dir/python/bin:$PATH"
 PYTHON_PREFIX="$PWD/$out_dir/python"
 
-build "https://github.com/vapoursynth/vapoursynth.git" "--depth 1 --single-branch" "vapoursynth" "
+build "https://github.com/vapoursynth/vapoursynth.git" "--single-branch" "e46204429041e95a881b61eedddd46c08f9a307c" "vapoursynth" "
 ./autogen.sh
 PYTHON3_LIBS=\"-L$PYTHON_PREFIX/lib/python3.12 -L$PYTHON_PREFIX/lib -lpython3.12\" \
   PYTHON3_CFLAGS=\"-I$PYTHON_PREFIX/include/python3.12\" \
@@ -210,30 +223,29 @@ sudo make install
 cp build/vapoursynth/.libs/vspipe $out_dir/vapoursynth
 
 ## bestsource
-build "https://github.com/vapoursynth/bestsource.git" "--depth 1 --single-branch --recurse-submodules --shallow-submodules --remote-submodules" "bestsource" "
+build "https://github.com/vapoursynth/bestsource.git" "--single-branch --recurse-submodules --shallow-submodules --remote-submodules" "c2be08527100a363e0018bc907c73644737b3953" "bestsource" "
 meson setup build
 ninja -C build
 " "build" "vapoursynth-plugins"
 
 ## mvtools
-build "https://github.com/dubhater/vapoursynth-mvtools.git" "--depth 1 --single-branch" "mvtools" "
+build "https://github.com/dubhater/vapoursynth-mvtools.git" "--single-branch" "e516e90f9618a20c2dc06be05935d2abbb5f691b" "mvtools" "
 meson setup build
 ninja -C build
 " "build" "vapoursynth-plugins"
 
 ## rife ncnn vulkan
-build "https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan.git" "--depth 1 --single-branch" "rife-ncnn-vulkan" "
+build "https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan.git" "--single-branch" "c3ec6aabc07c8fa37a4f58d7fed9e2ad1fc1b13f" "rife-ncnn-vulkan" "
 git submodule update --init --recursive --depth 1
 meson build
 ninja -C build
 " "build" "vapoursynth-plugins"
 
-PATH="/opt/homebrew/opt/llvm@19/bin:$PATH"
-
+PATH="/opt/homebrew/opt/llvm@20/bin:$PATH"
 ZSTD_PREFIX=$(brew --prefix zstd)
 
 ## akarin
-build "https://github.com/Jaded-Encoding-Thaumaturgy/akarin-vapoursynth-plugin.git" "" "akarin" "
+build "https://github.com/Jaded-Encoding-Thaumaturgy/akarin-vapoursynth-plugin.git" "--single-branch" "ed8ecd58722958891684a25fb883bbe626b8950a" "akarin" "
 meson build
 sed -i.bak \"s|-lzstd|-L${ZSTD_PREFIX}/lib -lzstd|g\" build/build.ninja # fuck you
 ninja -C build
@@ -244,15 +256,63 @@ echo "Starting model downloads..."
 
 # Download RIFE models
 download_model_files \
-  "https://raw.githubusercontent.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/a2579e656dac7909a66e7da84578a2f80ccba41c/models/rife-v4.26_ensembleFalse" \
+  "https://raw.githubusercontent.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/c3ec6aabc07c8fa37a4f58d7fed9e2ad1fc1b13f/models/rife-v4.26_ensembleFalse" \
   "rife-v4.26_ensembleFalse" \
   "flownet.bin" "flownet.param"
 
 echo "Model downloads completed"
 
-echo "done"
+echo "bundling MoltenVK..."
+
+MOLTENVK_PREFIX="$(brew --prefix molten-vk)"
+
+MOLTENVK_DEST="$out_dir/libs"
+ICD_DEST="$out_dir/vulkan/icd.d"
+MOLTENVK_JSON_SRC="$MOLTENVK_PREFIX/etc/vulkan/icd.d/MoltenVK_icd.json"
+MOLTENVK_SRC="$MOLTENVK_PREFIX/lib/libMoltenVK.dylib"
+
+mkdir -p "$MOLTENVK_DEST"
+mkdir -p "$ICD_DEST"
+
+if [ ! -f "$MOLTENVK_SRC" ]; then
+  echo "ERROR: MoltenVK not found at $MOLTENVK_SRC"
+  exit 1
+fi
+
+if [ ! -f "$MOLTENVK_JSON_SRC" ]; then
+  echo "ERROR: MoltenVK ICD JSON not found at $MOLTENVK_JSON_SRC"
+  exit 1
+fi
+
+echo "Copying libMoltenVK.dylib..."
+cp "$MOLTENVK_SRC" "$MOLTENVK_DEST/"
+
+# fix install name to be relative
+install_name_tool -id "@rpath/libMoltenVK.dylib" \
+  "$MOLTENVK_DEST/libMoltenVK.dylib"
+
+echo "copying and patching MoltenVK_icd.json..."
+
+cp "$MOLTENVK_JSON_SRC" "$ICD_DEST/MoltenVK_icd.json"
+
+# Patch only library_path using jq
+jq '.ICD.library_path = "../../libs/libMoltenVK.dylib"' \
+  "$ICD_DEST/MoltenVK_icd.json" > \
+  "$ICD_DEST/MoltenVK_icd.json.tmp"
+
+mv "$ICD_DEST/MoltenVK_icd.json.tmp" \
+   "$ICD_DEST/MoltenVK_icd.json"
+
+echo "MoltenVK bundled successfully"
+
+echo "fixing dylib permissions..."
+chmod -R u+rwX,go+rX "$out_dir/libs"
 
 echo "fixing all library dependencies with dylibbundler..."
+
+dylibbundler -cd -b -of \
+  -x "$MOLTENVK_DEST/libMoltenVK.dylib" \
+  -d "$out_dir/libs"
 
 for plugin in $out_dir/vapoursynth-plugins/*.dylib; do
   dylibbundler -cd -b -of -x "$plugin" -d "$out_dir/libs"
@@ -260,3 +320,5 @@ done
 
 dylibbundler -cd -b -of -x "$out_dir/vapoursynth/vspipe" -d "$out_dir/libs"
 dylibbundler -cd -b -of -x "$out_dir/python/lib/python3.12/site-packages/vapoursynth.so" -d "$out_dir/libs"
+
+echo "done"

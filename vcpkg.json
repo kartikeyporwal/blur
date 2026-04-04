@@ -1,36 +1,4 @@
 {
-  "name": "blur",
-  "dependencies": [
-    {
-      "name": "boost-asio",
-      "version>=": "1.83.0"
-    },
-    {
-      "name": "boost-process",
-      "version>=": "1.83.0"
-    },
-    "cli11",
-    "cpr",
-    "freetype",
-    "glad",
-    "nlohmann-json",
-    "sdl3",
-    {
-      "name": "sdl3-image",
-      "features": [
-        "jpeg"
-      ]
-    },
-    "gtest",
-    {
-      "name": "cppwinrt",
-      "platform": "windows"
-    },
-    {
-      "name": "sdbus-cpp",
-      "platform": "linux"
-    }
-  ],
   "vcpkg-configuration": {
     "default-registry": {
       "kind": "git",
@@ -44,5 +12,39 @@
         "name": "microsoft"
       }
     ]
-  }
+  },
+  "name": "blur",
+  "dependencies": [
+    {
+      "name": "boost-asio",
+      "version>=": "1.83.0"
+    },
+    {
+      "name": "boost-process",
+      "version>=": "1.83.0"
+    },
+    "cli11",
+    {
+      "name": "cppwinrt",
+      "platform": "windows"
+    },
+    "cpr",
+    "freetype",
+    "glad",
+    "gtest",
+    "nlohmann-json",
+    {
+      "name": "sdbus-cpp",
+      "platform": "linux"
+    },
+    "sdl3",
+    {
+      "name": "sdl3-image",
+      "features": [
+        "jpeg"
+      ]
+    },
+    "tl-expected",
+    "spdlog"
+  ]
 }

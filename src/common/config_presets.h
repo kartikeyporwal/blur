@@ -1,62 +1,82 @@
 #pragma once
 
 struct PresetSettings {
-	using CodecParams = std::vector<std::pair<std::string, std::string>>;
-	using PresetMap = std::vector<std::pair<std::string, CodecParams>>;
+	struct Preset {
+		std::string name;
+		std::string args;
+		bool is_default = false;
+	};
 
-	PresetMap presets = {
+	struct GpuPresets {
+		std::string gpu_type;
+		std::vector<Preset> presets;
+	};
+
+	std::vector<GpuPresets> all_gpu_presets = {
 		{
-			"nvidia",
-			{
-				{ "h264", "-c:v h264_nvenc -preset p6 -qp {quality}" },
-				{ "h265", "-c:v hevc_nvenc -preset p6 -qp {quality}" },
-				{ "av1", "-c:v av1_nvenc -preset p6 -qp {quality}" },
+			.gpu_type="nvidia",
+			.presets={
+				{ .name = "h264", .args = "-c:v h264_nvenc -preset p5 -rc vbr -cq {quality}", .is_default = true },
+				{ .name = "h265", .args = "-c:v hevc_nvenc -preset p5 -rc vbr -cq {quality}", .is_default = true },
+				{ .name = "av1", .args = "-c:v av1_nvenc -preset p5 -rc vbr -cq {quality}", .is_default = true },
 			},
 		},
 		{
-			"amd",
-			{
-				{ "h264", "-c:v h264_amf -qp_i {quality} -qp_b {quality} -qp_p {quality} -quality quality" },
-				{ "h265", "-c:v hevc_amf -qp_i {quality} -qp_b {quality} -qp_p {quality} -quality quality" },
-				{ "av1", "-c:v av1_amf -qp_i {quality} -qp_b {quality} -qp_p {quality} -quality quality" },
+			.gpu_type="amd",
+			.presets={
+				{ .name = "h264",
+							.args = "-c:v h264_amf -rc cqp -qp_i {quality} -qp_p {quality} -qp_b {quality}",
+							.is_default = true },
+				{ .name = "h265",
+							.args = "-c:v hevc_amf -rc cqp -qp_i {quality} -qp_p {quality} -qp_b {quality}",
+							.is_default = true },
+				{ .name = "av1",
+							.args = "-c:v av1_amf -rc cqp -qp_i {quality} -qp_p {quality} -qp_b {quality}",
+							.is_default = true },
 			},
 		},
 		{
-			"intel",
-			{
-				{ "h264", "-c:v h264_qsv -global_quality {quality} -preset veryslow" },
-				{ "h265", "-c:v hevc_qsv -global_quality {quality} -preset veryslow" },
-				{ "av1", "-c:v av1_qsv -global_quality {quality} -preset veryslow" },
+			.gpu_type="intel",
+			.presets={
+				{ .name = "h264",
+		          .args = "-c:v h264_qsv -global_quality {quality} -preset veryfast",
+		          .is_default = true },
+				{ .name = "h265",
+		          .args = "-c:v hevc_qsv -global_quality {quality} -preset veryfast",
+		          .is_default = true },
+				{ .name = "av1",
+		          .args = "-c:v av1_qsv -global_quality {quality} -preset veryfast",
+		          .is_default = true },
 			},
 		},
 		{
-			"mac",
-			{
-				{ "h264", "-c:v h264_videotoolbox -q:v {quality} -allow_sw 0" },
-				{ "h265", "-c:v hevc_videotoolbox -q:v {quality} -allow_sw 0" },
-				{ "av1", "-c:v av1_videotoolbox -q:v {quality} -allow_sw 0" },
-				{ "prores", "-c:v prores_videotoolbox -profile:v {quality} -allow_sw 0" },
+			.gpu_type="mac",
+			.presets={
+				{ .name = "h264", .args = "-c:v h264_videotoolbox -q:v {quality}", .is_default = true },
+				{ .name = "h265", .args = "-c:v hevc_videotoolbox -q:v {quality}", .is_default = true },
+				{ .name = "av1", .args = "-c:v av1_videotoolbox -q:v {quality}", .is_default = true },
+				{ .name = "prores", .args = "-c:v prores_videotoolbox -profile:v {quality}", .is_default = true },
 			},
 		},
 		{
-			"cpu",
-			{
-				{ "h264", "-c:v libx264 -pix_fmt yuv420p -preset superfast -crf {quality}" },
-				{ "h265", "-c:v libx265 -pix_fmt yuv420p -preset medium -crf {quality}" },
-				{ "av1", "-c:v libaom-av1 -pix_fmt yuv420p -cpu-used 4 -crf {quality}" },
-				{ "vp9", "-c:v libvpx-vp9 -pix_fmt yuv420p -deadline realtime -crf {quality}" },
+			.gpu_type="cpu",
+			.presets={
+				{ .name = "h264", .args = "-c:v libx264 -preset veryfast -crf {quality}", .is_default = true },
+				{ .name = "h265", .args = "-c:v libx265 -preset veryfast -crf {quality}", .is_default = true },
+				{ .name = "av1", .args = "-c:v libaom-av1 -cpu-used 4 -crf {quality}", .is_default = true },
+				{ .name = "vp9", .args = "-c:v libvpx-vp9 -deadline good -crf {quality} -b:v 0", .is_default = true },
 			},
-		}
+		},
 	};
 
 	[[nodiscard]] const std::string* find_preset_params(
 		const std::string& gpu_type, const std::string& preset_name
 	) const {
-		for (const auto& [type, codec_params] : presets) {
-			if (type == gpu_type) {
-				for (const auto& [codec, params] : codec_params) {
-					if (codec == preset_name) {
-						return &params;
+		for (const auto& gpu_presets : all_gpu_presets) {
+			if (gpu_presets.gpu_type == gpu_type) {
+				for (const auto& preset : gpu_presets.presets) {
+					if (preset.name == preset_name) {
+						return &preset.args;
 					}
 				}
 				return nullptr;
@@ -65,10 +85,10 @@ struct PresetSettings {
 		return nullptr;
 	}
 
-	[[nodiscard]] const CodecParams* find_preset_group(const std::string& gpu_type) const {
-		for (const auto& [type, codec_params] : presets) {
-			if (type == gpu_type) {
-				return &codec_params;
+	[[nodiscard]] const std::vector<Preset>* find_preset_group(const std::string& gpu_type) const {
+		for (const auto& gpu_presets : all_gpu_presets) {
+			if (gpu_presets.gpu_type == gpu_type) {
+				return &gpu_presets.presets;
 			}
 		}
 		return nullptr;
@@ -95,5 +115,15 @@ namespace config_presets {
 
 	std::vector<PresetDetails> get_available_presets(bool gpu_encoding, const std::string& gpu_type);
 
-	std::vector<std::wstring> get_preset_params(const std::string& gpu_type, const std::string& preset, int quality);
+	std::vector<std::string> get_preset_params(const std::string& gpu_type, const std::string& preset, int quality);
+
+	tl::expected<std::string, std::string> extract_codec_from_args(const std::vector<std::string>& ffmpeg_args);
+
+	struct QualityConfig {
+		int min_quality;
+		int max_quality;
+		std::string quality_label;
+	};
+
+	QualityConfig get_quality_config(const std::string& codec);
 }

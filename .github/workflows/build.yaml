@@ -8,12 +8,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-14, windows-2022]
         build-type: [Release]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -54,7 +54,7 @@ jobs:
           version: 1.12.1
 
       # - name: Cache dependencies (macOS)
-      #   uses: actions/cache@v4
+      #   uses: actions/cache@v5
       #   if: runner.os == 'macOS'
       #   with:
       #     path: dependencies
@@ -63,7 +63,7 @@ jobs:
       - name: Collect dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install ffmpeg libass zimg imagemagick autoconf automake libtool ffmpeg llvm@19 meson xxhash vapoursynth fftw dylibbundler
+          brew install ffmpeg libass zimg imagemagick autoconf automake libtool gcc ffmpeg llvm@20 meson xxhash vapoursynth fftw dylibbundler vulkan-loader molten-vk
           cd ci
           bash build-dependencies-macos.sh
 
@@ -73,28 +73,30 @@ jobs:
           cd ci
           pwsh build-dependencies-windows.ps1
 
-      - name: Download RIFE models (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p models/rife-v4.26_ensembleFalse
-          cd models/rife-v4.26_ensembleFalse
-          wget -q https://raw.githubusercontent.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/master/models/rife-v4.26_ensembleFalse/flownet.bin
-          wget -q https://raw.githubusercontent.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan/master/models/rife-v4.26_ensembleFalse/flownet.param
-          cd ../../
-
       - name: Collect dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get remove llvm*
-          sudo apt-get remove --purge -y 'python3-*' || true
-          sudo apt-get install -y libzimg-dev meson libxxhash-dev nasm libfftw3-dev llvm-16
           cd ci
           bash build-dependencies-linux.sh
 
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
+      - name: Set up vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          ./bootstrap-vcpkg.sh
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v5
         with:
-          vcpkgGitCommitId: "cd124b84feb0c02a24a2d90981e8358fdee0e077"
+          path: |
+            vcpkg_installed/
+            vcpkg/downloads/
+            vcpkg/packages/
+          key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ matrix.build-type }}-${{ steps.vcpkg-commit.outputs.hash }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ matrix.build-type }}-${{ steps.vcpkg-commit.outputs.hash }}-
+            vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ matrix.build-type }}-
 
       - name: Determine CMake Preset
         id: select-preset
@@ -158,108 +160,79 @@ jobs:
         id: prep
         shell: bash
         run: |
-          # Set up configuration variables
+          # Set up variables
           build_dir="bin/${{ matrix.build-type }}"
-          os="${{ runner.os }}"
-          build_type="${{ matrix.build-type }}"
-          arch="$(echo "${{ runner.arch }}" | tr '[:upper:]' '[:lower:]')"
-          configuration="$os-$build_type-$arch"
+          config="${{ runner.os }}-${{ matrix.build-type }}-$(echo "${{ runner.arch }}" | tr '[:upper:]' '[:lower:]')"
+          bundle_dir="$PWD/bundle"
 
+          # Create bundle directory for all outputs
+          mkdir -p "$bundle_dir"
           cd "$build_dir"
 
-          # Determine source and binary names
-          if [[ "$os" == "Windows" ]]; then
-            cli_source="blur-cli.exe"
-            gui_source="blur.exe"
+          case "${{ runner.os }}" in
+            "Windows")
+              # Rename binaries
+              mv blur-cli.exe "blur-cli-$config.exe"
+              mv blur-gui.exe "blur-$config.exe"
 
-            cli_binary="blur-cli-$configuration.exe"
-            gui_binary="blur-$configuration.exe"
+              # Build installer
+              cd ../../
+              cp -r ci/out/* installer/dependencies/lib
+              curl -L https://aka.ms/vs/17/release/vc_redist.x64.exe -o installer/redist/vc_redist.x64.exe
+              cp "$build_dir/blur-cli-$config.exe" installer/resources/blur-cli.exe
+              cp "$build_dir/blur-$config.exe" installer/resources/blur-gui.exe
+              iscc installer/setup.iss
 
-            mv "$cli_source" "$cli_binary"
-            mv "$gui_source" "$gui_binary"
+              # Copy everything to bundle
+              cp "$build_dir/blur-cli-$config.exe" "$bundle_dir/"
+              cp "$build_dir/blur-$config.exe" "$bundle_dir/"
+              cp installer/output/blur-installer.exe "$bundle_dir/blur-Windows-Installer-x64.exe"
+              ;;
 
-            gui_path="$gui_binary"
-            cli_path="$cli_binary"
-          elif [[ "$os" == "Linux" ]]; then
-            cli_source="blur-cli"
-            gui_source="blur"
+            "Linux")
+              # Package everything
+              mkdir -p package
+              mv blur-cli "package/blur-cli-$config"
+              mv blur "package/blur-$config"
+              mv lib/ package/
+              cp -r ../../ci/out/* package/
+              tar -czf "$bundle_dir/blur-$config.tar.gz" -C package .
 
-            cli_binary="blur-cli-$configuration"
-            gui_binary="blur-$configuration"
+              # Copy AppImage to bundle
+              cp ../../ci/Blur.AppImage "$bundle_dir/blur-$config.AppImage"
+              ;;
 
-            # rename binaries
-            mv "$cli_source" "$cli_binary"
-            mv "$gui_source" "$gui_binary"
+            "macOS")
+              # Package CLI
+              mv blur-cli "blur-cli-$config"
+              tar -czf "$bundle_dir/blur-cli-$config.tar.gz" "blur-cli-$config"
 
-            # copy models
-            mkdir models
-            cp -r ../../models/rife-v4.26_ensembleFalse/ models/
+              # Create DMG
+              brew install create-dmg
+              mkdir source_folder && mv blur.app source_folder/
+              create-dmg \
+                --volname "Blur Installer" \
+                --window-pos 200 120 \
+                --window-size 600 400 \
+                --icon-size 100 \
+                --icon "blur.app" 175 120 \
+                --hide-extension "blur.app" \
+                --app-drop-link 425 120 \
+                "$bundle_dir/blur-$config.dmg" source_folder
+              ;;
+          esac
 
-            # note: vapoursynth already copied
-
-            # create archive
-            package_name="blur-$configuration.tar.gz"
-            tar -czvf $package_name *
-
-            # clean up everything except the archive
-            find . -mindepth 1 -not -name "$package_name" -exec rm -rf {} +
-
-            cli_path="" # empty - cli & gui are combined
-            gui_path="$package_name"
-          elif [[ "$os" == "macOS" ]]; then
-            cli_source="blur-cli"
-            gui_source="blur.app"
-
-            cli_binary="blur-cli-$configuration"
-            gui_binary="blur-$configuration.dmg"
-
-            mv "$cli_source" "$cli_binary"
-            tar -cvf "$cli_binary.tar.gz" "$cli_binary"
-            cli_path="$cli_binary.tar.gz"
-
-            brew install create-dmg
-
-            mkdir source_folder
-            mv "$gui_source" source_folder
-
-            create-dmg \
-              --volname "Blur Installer" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "Blur.app" 175 120 \
-              --hide-extension "Blur.app" \
-              --app-drop-link 425 120 \
-              "$gui_binary" \
-              "source_folder"
-
-            gui_path="$gui_binary"
-          fi
-
-          # Output for subsequent steps
-          echo "build_dir=$build_dir" >> $GITHUB_OUTPUT
-          echo "cli_binary=$cli_binary" >> $GITHUB_OUTPUT
-          echo "gui_binary=$gui_binary" >> $GITHUB_OUTPUT
-          echo "cli_path=$cli_path" >> $GITHUB_OUTPUT
-          echo "gui_path=$gui_path" >> $GITHUB_OUTPUT
-          echo "configuration=$configuration" >> $GITHUB_OUTPUT
+          # Set outputs
+          echo "config=$config" >> $GITHUB_OUTPUT
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: Blur-${{ steps.prep.outputs.configuration }}
-          path: |
-            ${{ steps.prep.outputs.build_dir }}/${{ steps.prep.outputs.cli_path }}
-            ${{ steps.prep.outputs.build_dir }}/${{ steps.prep.outputs.gui_path }}
-            ${{ runner.os == 'Windows' && 'installer/output/blur-Windows-Installer-x64.exe' || '' }}
-            ${{ runner.os == 'Linux' && 'ci/Blur.AppImage' || '' }}
+          name: Blur-${{ steps.prep.outputs.config }}
+          path: bundle/
 
       - name: Release
         uses: softprops/action-gh-release@v2
-        if: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') }}
+        if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
         with:
-          files: |
-            ${{ steps.prep.outputs.build_dir }}/${{ steps.prep.outputs.cli_path }}
-            ${{ steps.prep.outputs.build_dir }}/${{ steps.prep.outputs.gui_path }}
-            ${{ runner.os == 'Windows' && 'installer/output/blur-Windows-Installer-x64.exe' || '' }}
-            ${{ runner.os == 'Linux' && 'ci/Blur.AppImage' || '' }}
+          files: bundle/*

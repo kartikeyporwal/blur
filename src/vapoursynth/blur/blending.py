@@ -1,6 +1,8 @@
 from vapoursynth import core
 import vapoursynth as vs
 
+import blur.utils as u
+
 
 # https://github.com/AkarinVS/vapoursynth-plugin/issues/17#issuecomment-1312639376
 # can't use Expr2 which supports src0,1,2 etc. when using asmjit so youre limited to 26 clips
@@ -13,8 +15,6 @@ def expr1_arbitrary_weights_blend(clips, weights):
         expr = " ".join(
             map(lambda cw: f"{cw[0]} {cw[1]} *", zip(names[: len(clips)], weights))
         ) + " +" * (len(clips) - 1)
-
-        print("expr", expr)
 
         return core.akarin.Expr(
             clips,
@@ -84,37 +84,24 @@ def average(clip: vs.VideoNode, weights: list[float], divisor: float | None = No
 
 
 def average_bright(
-    video: vs.VideoNode,
+    _video: vs.VideoNode,
+    is_full_color_range: bool,
     gamma: float,
     weights: list[float],
     divisor: float | None = None,
 ):
-    orig_format = video.format
-    needs_conversion = orig_format.id != vs.RGBS
+    def process(video):
+        def gamma_correct(video, gamma):
+            expr = f"x {gamma} pow"
+            return core.std.Expr(video, expr=expr)
+            # return core.std.Levels(
+            #     video, gamma=gamma, min_in=0.0, max_in=1.0, min_out=0.0, max_out=1.0
+            # )
 
-    if needs_conversion:
-        video = core.resize.Bicubic(
-            video,
-            format=vs.RGBS,
-            matrix_in_s="709" if orig_format.color_family == vs.YUV else None,
-        )
+        video = gamma_correct(video, gamma)
+        video = average(video, weights, divisor)
+        video = gamma_correct(video, 1.0 / gamma)
 
-    def gamma_correct(video, gamma):
-        expr = f"x {gamma} pow"
-        return core.std.Expr(video, expr=expr)
-        # return core.std.Levels(
-        #     video, gamma=gamma, min_in=0.0, max_in=1.0, min_out=0.0, max_out=1.0
-        # )
+        return video
 
-    video = gamma_correct(video, gamma)
-    video = average(video, weights, divisor)
-    video = gamma_correct(video, 1.0 / gamma)
-
-    if needs_conversion:
-        video = core.resize.Bicubic(
-            video,
-            format=orig_format.id,
-            matrix_s="709" if orig_format.color_family == vs.YUV else None,
-        )
-
-    return video
+    return u.with_format(_video, is_full_color_range, vs.RGBS, process)

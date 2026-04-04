@@ -21,6 +21,13 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Request full NVIDIA driver capabilities (compute + graphics/Vulkan).
+# By default --gpus all only mounts compute libs; graphics is needed for RIFE (Vulkan).
+ENV NVIDIA_DRIVER_CAPABILITIES=all
+# Use the EGL-based NVIDIA Vulkan ICD (headless, no X11 required).
+# Set here so all child processes (vspipe) inherit it.
+ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+
 # libvulkan1  — Vulkan loader (ICD); the actual NVIDIA Vulkan ICD is injected by
 #               the NVIDIA Container Toolkit at runtime via --gpus all.
 # ca-certificates — needed by blur for update checks (can skip with no network)
@@ -28,6 +35,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libvulkan1 \
     ca-certificates \
   && rm -rf /var/lib/apt/lists/*
+
+# Bake in the NVIDIA Vulkan ICD descriptor.
+# NVIDIA_DRIVER_CAPABILITIES=all makes nvidia-container-toolkit mount libGLX_nvidia.so.0
+# but does NOT create nvidia_icd.json. The Vulkan loader needs this file to discover
+# the NVIDIA driver. libGLX_nvidia.so.0 uses a relative path so ldconfig finds it from
+# /usr/lib/x86_64-linux-gnu/ where nvidia-container-toolkit places it.
+# Use libEGL_nvidia.so.0 as the Vulkan ICD — it supports headless Vulkan without X11.
+# libGLX_nvidia.so.0 (the default on the host) requires libX11/libXext which are
+# absent in headless containers.
+RUN mkdir -p /usr/share/vulkan/icd.d && \
+    printf '{"file_format_version":"1.0.0","ICD":{"library_path":"libEGL_nvidia.so.0","api_version":"1.3.242"}}\n' \
+    > /usr/share/vulkan/icd.d/nvidia_icd.json
 
 # Copy the bundle from the CI build stage
 COPY --from=bundle /dist/blur-Linux-Release-x64 /blur

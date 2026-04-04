@@ -1,34 +1,33 @@
 #pragma once
 
 #include "config_blur.h"
+#include "config_app.h"
 
 struct RenderCommands {
 	std::vector<std::wstring> vspipe;
 	std::vector<std::wstring> ffmpeg;
 };
 
-struct RenderCommandsResult {
-	bool success;
-	std::string error_message;
-	std::optional<RenderCommands> commands;
-};
-
 struct RenderResult {
-	bool success;
-	std::string error_message;
 	bool stopped;
 };
 
 struct RenderStatus {
 	bool finished = false;
-	bool init = false;
-	int current_frame;
-	int total_frames;
+
+	bool init_frames = false;
+	int current_frame = 0;
+	int total_frames = 0;
+
+	bool init_fps = false;
 	std::chrono::steady_clock::time_point start_time;
+	int start_frame = 0;
 	std::chrono::duration<double> elapsed_time;
-	float fps;
+	float fps = 0.f;
 
 	void update_progress_string(bool first);
+	void on_pause();
+
 	std::string progress_string;
 };
 
@@ -38,7 +37,7 @@ private:
 
 	RenderStatus m_status;
 
-	std::wstring m_video_name;
+	std::string m_video_name;
 
 	std::filesystem::path m_video_path;
 	std::filesystem::path m_video_folder;
@@ -50,6 +49,9 @@ private:
 	u::VideoInfo m_video_info;
 
 	BlurSettings m_settings;
+	bool m_is_global_config = false;
+
+	GlobalAppSettings m_app_settings;
 
 	bool m_to_kill = false;
 	bool m_paused = false;
@@ -58,11 +60,11 @@ private:
 
 	void build_output_filename();
 
-	RenderCommandsResult build_render_commands();
+	tl::expected<RenderCommands, std::string> build_render_commands();
 
 	void update_progress(int current_frame, int total_frames);
 
-	RenderResult do_render(RenderCommands render_commands);
+	tl::expected<RenderResult, std::string> do_render(RenderCommands render_commands);
 
 public:
 	Render(
@@ -79,7 +81,7 @@ public:
 	bool create_temp_path();
 	bool remove_temp_path();
 
-	RenderResult render();
+	tl::expected<RenderResult, std::string> render();
 
 	void pause();
 	void resume();
@@ -96,8 +98,12 @@ public:
 		return m_render_id;
 	}
 
-	[[nodiscard]] std::wstring get_video_name() const {
+	[[nodiscard]] std::string get_video_name() const {
 		return m_video_name;
+	}
+
+	[[nodiscard]] std::filesystem::path get_input_video_path() const {
+		return m_video_path;
 	}
 
 	[[nodiscard]] std::filesystem::path get_output_video_path() const {
@@ -115,6 +121,10 @@ public:
 	[[nodiscard]] std::filesystem::path get_preview_path() const {
 		return m_preview_path;
 	}
+
+	[[nodiscard]] bool is_global_config() const {
+		return m_is_global_config;
+	}
 };
 
 class Rendering {
@@ -124,7 +134,7 @@ private:
 	std::optional<uint32_t> m_current_render_id;
 
 	std::optional<std::function<void()>> m_progress_callback;
-	std::optional<std::function<void(Render*, RenderResult)>> m_render_finished_callback;
+	std::optional<std::function<void(Render*, tl::expected<RenderResult, std::string>)>> m_render_finished_callback;
 
 	std::mutex m_lock;
 
@@ -133,7 +143,7 @@ public:
 
 	Render& queue_render(Render&& render);
 
-	void stop_rendering();
+	void stop_renders_and_wait();
 
 	const std::vector<std::unique_ptr<Render>>& get_queue() {
 		return m_queue;
@@ -156,7 +166,9 @@ public:
 		m_progress_callback = std::move(callback);
 	}
 
-	void set_render_finished_callback(std::function<void(Render*, const RenderResult& result)>&& callback) {
+	void set_render_finished_callback(
+		std::function<void(Render*, const tl::expected<RenderResult, std::string>& result)>&& callback
+	) {
 		m_render_finished_callback = std::move(callback);
 	}
 
@@ -165,7 +177,7 @@ public:
 			(*m_progress_callback)();
 	}
 
-	void call_render_finished_callback(Render* render, const RenderResult& result) {
+	void call_render_finished_callback(Render* render, const tl::expected<RenderResult, std::string>& result) {
 		if (m_render_finished_callback)
 			(*m_render_finished_callback)(render, result);
 	}

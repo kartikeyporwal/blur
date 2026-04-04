@@ -5,7 +5,7 @@
 
 namespace configs = gui::components::configs;
 
-void configs::option_information(ui::Container& container, BlurSettings& settings) {
+void configs::option_information(ui::Container& container) {
 	const static std::unordered_map<std::string, std::vector<std::string>> option_explanations = {
 		// Blur settings
 		// { "section blur checkbox",
@@ -72,7 +72,6 @@ void configs::option_information(ui::Container& container, BlurSettings& setting
 				"FPS to interpolate input video to (before blurring)",
 			},
 		},
-#ifndef __APPLE__ // TODO: apple rife issue
 		{
 			"interpolation method dropdown",
 			{
@@ -80,7 +79,6 @@ void configs::option_information(ui::Container& container, BlurSettings& setting
 				"Speed: svp > rife",
 			},
 		},
-#endif
 		// pre-interp settings
 		{
 			"section pre-interpolation checkbox",
@@ -130,13 +128,6 @@ void configs::option_information(ui::Container& container, BlurSettings& setting
 
 		// Rendering settings
 		{
-			"quality",
-			{
-				"Quality setting for output video. Depends on the codec",
-				"(0 = lossless quality, 51 = really bad)",
-			},
-		},
-		{
 			"deduplicate checkbox",
 			{
 				"Removes duplicate frames and replaces them with interpolated frames",
@@ -162,12 +153,8 @@ void configs::option_information(ui::Container& container, BlurSettings& setting
 		{
 			"deduplicate method dropdown",
 			{
-#ifndef __APPLE__ // TODO: apple rife issue
 				"Quality: rife > svp",
 				"Speed: old > svp > rife",
-#else
-				"Old is faster, but less accurate",
-#endif
 			},
 		},
 		{

@@ -7,6 +7,8 @@ namespace test_utils {
 	const std::filesystem::path TEST_VIDEO_PATH = CURRENT_DIR / "../assets/test_video.mp4";
 
 	bool copy_test_video(const std::filesystem::path& path) {
+		assert(std::filesystem::exists(TEST_VIDEO_PATH));
+
 		try {
 			std::filesystem::copy_file(TEST_VIDEO_PATH, path, std::filesystem::copy_options::overwrite_existing);
 			return true;
@@ -51,11 +53,11 @@ namespace test_utils {
 		return { video, config };
 	}
 
-	std::vector<std::string> generate_output_paths(const std::filesystem::path& dir, size_t count) {
-		std::vector<std::string> outputs;
+	std::vector<std::filesystem::path> generate_output_paths(const std::filesystem::path& dir, size_t count) {
+		std::vector<std::filesystem::path> outputs;
 		outputs.reserve(count);
 		for (size_t i = 0; i < count; ++i) {
-			outputs.push_back((dir / ("output" + std::to_string(i + 1) + ".mp4")).string());
+			outputs.push_back(dir / ("output" + std::to_string(i + 1) + ".mp4"));
 		}
 		return outputs;
 	}
@@ -87,8 +89,8 @@ protected:
 // NOLINTEND(cppcoreguidelines-non-private-member-variables-in-classes)
 
 TEST_F(CLITest, SingleFileWithConfig) {
-	std::vector<std::string> inputs{ m_test_video.string() };
-	std::vector<std::string> configs{ m_test_config.string() };
+	std::vector<std::filesystem::path> inputs{ m_test_video };
+	std::vector<std::filesystem::path> configs{ m_test_config };
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 1);
 
 	EXPECT_TRUE(cli::run(inputs, outputs, configs, false, true, true));
@@ -99,7 +101,7 @@ TEST_F(CLITest, SingleFileWithConfig) {
 }
 
 TEST_F(CLITest, SingleFileNoConfig) {
-	std::vector<std::string> inputs{ m_test_video.string() };
+	std::vector<std::filesystem::path> inputs{ m_test_video };
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 1);
 
 	EXPECT_TRUE(cli::run(inputs, outputs, {}, false, true, true));
@@ -110,7 +112,7 @@ TEST_F(CLITest, SingleFileNoConfig) {
 }
 
 TEST_F(CLITest, SingleFileNoConfigNoOutput) {
-	std::vector<std::string> inputs{ m_test_video.string() };
+	std::vector<std::filesystem::path> inputs{ m_test_video };
 
 	EXPECT_TRUE(cli::run(inputs, {}, {}, false, true, true));
 
@@ -118,8 +120,8 @@ TEST_F(CLITest, SingleFileNoConfigNoOutput) {
 }
 
 TEST_F(CLITest, InputOutputCountMismatch) {
-	std::vector<std::string> inputs{ m_test_video.string(), m_test_video.string() };
-	std::vector<std::string> configs{ m_test_config.string(), m_test_config.string() };
+	std::vector<std::filesystem::path> inputs{ m_test_video, m_test_video };
+	std::vector<std::filesystem::path> configs{ m_test_config, m_test_config };
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 1);
 
 	EXPECT_FALSE(cli::run(inputs, outputs, configs, false, true, true));
@@ -130,8 +132,8 @@ TEST_F(CLITest, InputOutputCountMismatch) {
 }
 
 TEST_F(CLITest, ConfigCountMismatch) {
-	std::vector<std::string> inputs{ m_test_video.string(), m_test_video.string() };
-	std::vector<std::string> configs{ m_test_config.string() };
+	std::vector<std::filesystem::path> inputs{ m_test_video, m_test_video };
+	std::vector<std::filesystem::path> configs{ m_test_config };
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 2);
 
 	EXPECT_FALSE(cli::run(inputs, outputs, configs, false, true, true));
@@ -142,8 +144,8 @@ TEST_F(CLITest, ConfigCountMismatch) {
 }
 
 TEST_F(CLITest, NonExistentInputFile) {
-	std::vector<std::string> inputs{ (m_test_dir / "nonexistent.mp4").string() };
-	std::vector<std::string> configs{ m_test_config.string() };
+	std::vector<std::filesystem::path> inputs{ m_test_dir / "nonexistent.mp4" };
+	std::vector<std::filesystem::path> configs{ m_test_config };
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 1);
 
 	EXPECT_TRUE(cli::run(inputs, outputs, configs, false, true, true));
@@ -154,8 +156,8 @@ TEST_F(CLITest, NonExistentInputFile) {
 }
 
 TEST_F(CLITest, NonExistentConfigFile) {
-	std::vector<std::string> inputs{ m_test_video.string() };
-	std::vector<std::string> configs{ (m_test_dir / "nonexistent.cfg").string() };
+	std::vector<std::filesystem::path> inputs{ m_test_video };
+	std::vector<std::filesystem::path> configs{ m_test_dir / "nonexistent.cfg" };
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 1);
 
 	EXPECT_FALSE(cli::run(inputs, outputs, configs, false, true, true));
@@ -166,8 +168,8 @@ TEST_F(CLITest, NonExistentConfigFile) {
 }
 
 TEST_F(CLITest, MultipleValidInputsWithOutputs) {
-	std::vector<std::string> inputs{ m_test_video.string(), m_test_video.string() };
-	std::vector<std::string> configs{ m_test_config.string(), m_test_config.string() };
+	std::vector<std::filesystem::path> inputs{ m_test_video, m_test_video };
+	std::vector<std::filesystem::path> configs{ m_test_config, m_test_config };
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 2);
 
 	EXPECT_TRUE(cli::run(inputs, outputs, configs, false, true, true));
@@ -178,8 +180,8 @@ TEST_F(CLITest, MultipleValidInputsWithOutputs) {
 }
 
 TEST_F(CLITest, MultipleInputsWithConfigs) {
-	std::vector<std::string> inputs{ m_test_video.string(), m_test_video.string() };
-	std::vector<std::string> configs{ m_test_config.string(), m_test_config.string() };
+	std::vector<std::filesystem::path> inputs{ m_test_video, m_test_video };
+	std::vector<std::filesystem::path> configs{ m_test_config, m_test_config };
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 2);
 
 	EXPECT_TRUE(cli::run(inputs, outputs, configs, false, true, true));
@@ -193,7 +195,7 @@ TEST_F(CLITest, InvalidVideoFile) {
 	auto invalid_video = m_test_dir / "invalid.mp4";
 	test_utils::create_invalid_video_file(invalid_video);
 
-	std::vector<std::string> inputs{ invalid_video.string() };
+	std::vector<std::filesystem::path> inputs{ invalid_video };
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 1);
 
 	EXPECT_TRUE(cli::run(inputs, outputs, {}, false, true, true));
@@ -204,10 +206,10 @@ TEST_F(CLITest, InvalidVideoFile) {
 }
 
 TEST_F(CLITest, OutputInNonExistentDirectory) {
-	std::vector<std::string> inputs{ m_test_video.string() };
+	std::vector<std::filesystem::path> inputs{ m_test_video };
 	std::filesystem::path nested_output;
 	test_utils::create_nested_output_path(m_test_dir, nested_output);
-	std::vector<std::string> outputs{ nested_output.string() };
+	std::vector<std::filesystem::path> outputs{ nested_output };
 
 	EXPECT_TRUE(cli::run(inputs, outputs, {}, false, true, true));
 
@@ -220,11 +222,11 @@ TEST_F(CLITest, MixedSuccessAndFailure) {
 	auto invalid_video = m_test_dir / "invalid.mp4";
 	test_utils::create_invalid_video_file(invalid_video);
 
-	std::vector<std::string> inputs{
-		m_test_video.string(),
-		invalid_video.string(),
-		(m_test_dir / "nonexistent.mp4").string(),
-		m_test_video.string(),
+	std::vector<std::filesystem::path> inputs{
+		m_test_video,
+		invalid_video,
+		m_test_dir / "nonexistent.mp4",
+		m_test_video,
 	};
 	auto outputs = test_utils::generate_output_paths(m_test_dir, 4);
 

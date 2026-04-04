@@ -8,6 +8,7 @@
 
 #include "../ui/ui.h"
 #include "../render/render.h"
+#include <SDL3/SDL_dialog.h>
 
 namespace main = gui::components::main;
 
@@ -15,27 +16,28 @@ void main::open_files_button(ui::Container& container, const std::string& label)
 	ui::add_button("open file button", container, label, fonts::dejavu, [] {
 		static auto file_callback = [](void* userdata, const char* const* files, int filter) {
 			if (files && *files) {
-				std::vector<std::wstring> wpaths;
+				std::vector<std::filesystem::path> wpaths;
 
-				std::span<const char* const> span_files(files, SIZE_MAX); // big size, we stop manually
-
-				for (const auto& file : span_files) {
-					if (file == nullptr)
-						break; // null-terminated array
-
-					wpaths.push_back(u::towstring(file));
+				for (const char* const* p = files; *p != nullptr; ++p) {
+					wpaths.emplace_back(u::string_to_path(*p));
 				}
 
 				tasks::add_files(wpaths);
 			}
 		};
 
+		const SDL_DialogFileFilter filters[] = {
+			{ "Video files",
+			  "webm;mkv;flv;vob;ogv;ogg;rrc;gifv;mng;mov;avi;qt;wmv;yuv;rm;rmvb;asf;amv;mp4;m4p;m4v;mpg;mp2;mpeg;mpe;"
+			  "mpv;svi;3gp;3g2;mxf;roq;nsv;f4v;f4p;f4a;f4b;mod;ts;m2ts;mts;divx;bik;wtv;drc" }
+		};
+
 		SDL_ShowOpenFileDialog(
 			file_callback, // Properly typed callback function
 			nullptr,       // userdata
 			nullptr,       // parent window (nullptr for default)
-			nullptr,       // file filters
-			0,             // number of filters
+			filters,       // file filters
+			1,             // number of filters
 			"",            // default path
 			true           // allow multiple files
 		);
@@ -53,10 +55,20 @@ void main::render_screen(
 	// todo: ui concept
 	// screen start|      [faded]last_video current_video [faded]next_video next_video2 next_video3 (+5) |
 	// screen end animate sliding in as it moves along the queue
+
+	std::string render_title_text = render.get_video_name();
+
+	if (current) {
+		int queue_size = rendering.get_queue().size() + tasks::finished_renders;
+		if (queue_size > 1) {
+			render_title_text = std::format("{} ({}/{})", render_title_text, tasks::finished_renders + 1, queue_size);
+		}
+	}
+
 	ui::add_text(
 		std::format("video {} name text", render.get_render_id()),
 		container,
-		u::tostring(render.get_video_name()),
+		render_title_text,
 		gfx::Color(255, 255, 255, (current ? 255 : 100)),
 		fonts::smaller_header_font,
 		FONT_CENTERED_X
@@ -82,7 +94,7 @@ void main::render_screen(
 		}
 	}
 
-	if (render_status.init) {
+	if (render_status.init_frames) {
 		float render_progress = (float)render_status.current_frame / (float)render_status.total_frames;
 		bar_percent = u::lerp(bar_percent, render_progress, 5.f * delta_time, 0.005f);
 
@@ -111,6 +123,11 @@ void main::render_screen(
 			);
 		}
 
+		bool status_fps_init = render_status.fps != 0.f;
+
+		if (!status_fps_init)
+			container.pop_element_gap();
+
 		ui::add_text(
 			"progress text",
 			container,
@@ -120,16 +137,42 @@ void main::render_screen(
 			FONT_CENTERED_X
 		);
 
-		container.pop_element_gap();
+		if (status_fps_init) {
+			ui::add_text(
+				"progress text fps",
+				container,
+				std::format("{:.2f} frames per second", render_status.fps),
+				gfx::Color::white(renderer::MUTED_SHADE),
+				fonts::dejavu,
+				FONT_CENTERED_X
+			);
 
-		ui::add_text(
-			"progress text 2",
-			container,
-			std::format("{:.2f} frames per second", render_status.fps),
-			gfx::Color::white(renderer::MUTED_SHADE),
-			fonts::dejavu,
-			FONT_CENTERED_X
-		);
+			container.pop_element_gap();
+
+			int remaining_frames = render_status.total_frames - render_status.current_frame;
+			int eta_seconds = static_cast<int>(remaining_frames / render_status.fps);
+
+			int hours = eta_seconds / 3600;
+			int minutes = (eta_seconds % 3600) / 60;
+			int seconds = eta_seconds % 60;
+
+			std::ostringstream eta_stream;
+			if (hours > 0)
+				eta_stream << hours << " hour" << (hours > 1 ? "s " : " ");
+			if (minutes > 0)
+				eta_stream << minutes << " minute" << (minutes > 1 ? "s " : " ");
+			if (seconds > 0 || (hours == 0 && minutes == 0))
+				eta_stream << seconds << " second" << (seconds != 1 ? "s" : "");
+
+			ui::add_text(
+				"progress text eta",
+				container,
+				std::format("~{} left", eta_stream.str()),
+				gfx::Color::white(renderer::MUTED_SHADE),
+				fonts::dejavu,
+				FONT_CENTERED_X
+			);
+		}
 
 		is_progress_shown = true;
 	}
@@ -175,7 +218,7 @@ void main::home_screen(ui::Container& container, float delta_time) {
 			"blur title text", container, title_pos, "blur", gfx::Color::white(), fonts::header_font, FONT_CENTERED_X
 		);
 
-		if (initialisation_res && !initialisation_res->success) {
+		if (!initialisation_res) {
 			ui::add_text(
 				"failed to initialise text",
 				container,
@@ -188,7 +231,7 @@ void main::home_screen(ui::Container& container, float delta_time) {
 			ui::add_text(
 				"failed to initialise reason",
 				container,
-				initialisation_res->error_message,
+				initialisation_res.error(),
 				gfx::Color::white(renderer::MUTED_SHADE),
 				fonts::dejavu,
 				FONT_CENTERED_X

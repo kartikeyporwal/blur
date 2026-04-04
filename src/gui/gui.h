@@ -1,9 +1,8 @@
 #pragma once
 
 namespace gui {
-	inline std::optional<Blur::InitialisationResponse> initialisation_res;
+	inline tl::expected<void, std::string> initialisation_res = tl::make_unexpected("Not initialised");
 
-	inline bool stop = false;
 	inline bool to_render = true;
 
 	inline bool dragging = false;
